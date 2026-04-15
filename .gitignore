@@ -1,0 +1,79 @@
+# ============================================================================
+# DEVELOPER FILES - KEEP IN GIT
+# ============================================================================
+# Source code, configs, and build scripts are tracked
+# Everything below is EXCLUDED from git
+
+# ============================================================================
+# BUILD OUTPUTS - DO NOT COMMIT
+# ============================================================================
+build/
+dist/
+*.spec
+PortableApp/
+build_portable.ps1
+run_portable.py
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+
+# ============================================================================
+# USER DATA - DO NOT COMMIT
+# ============================================================================
+# SQLite database with all application data (users, tests, quotations)
+data/*.db
+# ID counter for quotation generation
+data/*.json
+# Generated exports and temporary files
+data/exports/
+data/temp/
+temp/
+!data/.gitkeep
+
+# Legacy CSV/Excel files (no longer used - migrated to SQLite)
+data/*.csv
+data/*.xlsx
+
+# ============================================================================
+# ENVIRONMENT & SECRETS - DO NOT COMMIT
+# ============================================================================
+.env
+.env.local
+.env.production
+*.log
+
+# ============================================================================
+# VIRTUAL ENVIRONMENT - DO NOT COMMIT
+# ============================================================================
+venv/
+env/
+ENV/
+.venv/
+
+# ============================================================================
+# IDE & OS FILES - DO NOT COMMIT
+# ============================================================================
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+*.tmp
+
+# ============================================================================
+# FLASK - DO NOT COMMIT
+# ============================================================================
+instance/
+.webassets-cache
+flask_session/

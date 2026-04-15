@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TUV Rheinland - Quotation System</title>
+  <link rel="icon" type="image/png" href="/bhc/tuv_logo.png?v=20260414c" />
+  <meta name="description" content="TUV Rheinland India - Building Health Check Quotation Management System" />
+  <meta name="theme-color" content="#003A5C" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/bhc/style.css?v=20260415b" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="topbar-brand-mark">TR</div>
+      <div>
+        <div class="topbar-title">TUV Rheinland India</div>
+        <div class="topbar-sub">Civil Quotation Management</div>
+      </div>
+    </div>
+    <nav class="topbar-nav">
+      <div class="topbar-refresh-group">
+        <button class="btn btn-outline-light" id="btn-refresh" title="Refresh (Ctrl+R)">Refresh</button>
+        <span id="last-refreshed" class="topbar-last-refreshed" title="Last data refresh time"></span>
+      </div>
+      <button class="btn btn-outline-light" id="btn-export" title="Export to Excel">Export</button>
+      <div class="topbar-profile">
+        <button class="topbar-user-chip" id="btn-profile-menu" type="button" aria-haspopup="true" aria-expanded="false" title="Open profile menu">
+          <div class="topbar-avatar" id="nav-avatar">TR</div>
+          <div class="topbar-user-info">
+            <div id="nav-user" class="topbar-user-name">Sign in required</div>
+            <div id="nav-role" class="topbar-user-role hidden">User</div>
+          </div>
+        </button>
+        <div id="profile-menu" class="profile-menu hidden" role="menu" aria-label="Profile menu">
+          <div class="profile-menu-head">
+            <div class="profile-menu-title">Profile</div>
+            <div id="account-email" class="account-email"></div>
+          </div>
+
+          <div class="profile-menu-actions compact">
+            <button id="btn-open-password-panel" class="btn btn-outline" type="button">Change Password</button>
+            <button class="btn btn-outline" id="btn-logout" type="button">Logout</button>
+          </div>
+
+          <div class="profile-menu-grid" id="profile-details-panel">
+            <label>
+              <span>Designation</span>
+              <input type="text" id="profile-designation" class="search-input" placeholder="e.g. Senior Engineer - Civil" />
+            </label>
+            <label>
+              <span>Signature Image</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="file" id="profile-signature-file" class="search-input" accept=".png,.jpg,.jpeg" style="flex:1" />
+                <span id="profile-signature-status" class="muted" style="white-space:nowrap"></span>
+              </div>
+            </label>
+            <label>
+              <span>Security Question <span id="profile-sq-status" class="muted"></span></span>
+              <select id="profile-security-question" class="search-input">
+                <option value="">— Select a question —</option>
+              </select>
+            </label>
+            <label>
+              <span>Security Answer</span>
+              <input type="text" id="profile-security-answer" class="search-input" placeholder="Your answer (case-insensitive)" autocomplete="off" />
+            </label>
+            <div style="text-align:right">
+              <button id="btn-save-profile" class="btn btn-primary btn-sm">Save Profile</button>
+            </div>
+          </div>
+
+          <div id="profile-password-panel" class="profile-menu-grid hidden">
+            <label>
+              <span>Current Password</span>
+              <div class="password-field-wrap">
+                <input type="password" id="change-current-password" class="search-input" autocomplete="current-password" />
+                <button class="password-toggle" type="button" data-target="change-current-password">Show</button>
+              </div>
+            </label>
+            <label>
+              <span>New Password</span>
+              <div class="password-field-wrap">
+                <input type="password" id="change-new-password" class="search-input" autocomplete="new-password" />
+                <button class="password-toggle" type="button" data-target="change-new-password">Show</button>
+              </div>
+            </label>
+            <label>
+              <span>Confirm New Password</span>
+              <div class="password-field-wrap">
+                <input type="password" id="change-confirm-password" class="search-input" autocomplete="new-password" />
+                <button class="password-toggle" type="button" data-target="change-confirm-password">Show</button>
+              </div>
+            </label>
+          </div>
+
+          <div class="password-guidance">
+            <div id="password-strength" class="password-strength">Password strength: -</div>
+            <div class="password-hint">Use 8+ characters with uppercase, lowercase, number, and special character.</div>
+          </div>
+
+          <div class="profile-menu-actions hidden" id="profile-password-actions">
+            <button id="btn-change-password" class="btn btn-primary" disabled>Update Password</button>
+          </div>
+          <div id="account-feedback" class="feedback hidden"></div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main class="dashboard-wrap">
+    <section id="auth-panel" class="auth-shell animate-rise">
+      <!-- Decorative background shapes -->
+      <div class="auth-bg-orb auth-bg-orb--1"></div>
+      <div class="auth-bg-orb auth-bg-orb--2"></div>
+      <div class="auth-bg-orb auth-bg-orb--3"></div>
+
+      <section class="auth-card-centered">
+        <div class="auth-accent-bar"></div>
+        <div class="auth-card-inner">
+          <!-- Brand header -->
+          <div class="auth-brand-header">
+            <div class="auth-logo-ring">
+              <img src="/bhc/tuv_logo.png?v=20260414c" alt="TÜV Rheinland" class="auth-logo-centered" />
+            </div>
+            <h1 class="auth-portal-heading">BHC Portal</h1>
+            <p class="auth-portal-tagline">Building Health Check-Up Quotation System</p>
+          </div>
+
+          <div class="auth-divider"><span>Secure Sign-In</span></div>
+
+          <!-- Login form -->
+          <div id="login-form-section" class="auth-form-grid">
+            <label class="auth-field">
+              <span>Username</span>
+              <input type="text" id="login-email" class="auth-input" placeholder="name@ind.tuv.com" autocomplete="username" />
+            </label>
+            <label class="auth-field">
+              <span>Password</span>
+              <div class="auth-password-wrap">
+                <input type="password" id="login-password" class="auth-input" placeholder="Enter password" autocomplete="current-password" />
+              </div>
+            </label>
+            <div class="auth-options-row">
+              <label class="auth-show-password">
+                <input type="checkbox" id="auth-show-pw" />
+                <span>Show password</span>
+              </label>
+              <button id="btn-forgot-password-toggle" class="auth-forgot-link" type="button">Forgot password?</button>
+            </div>
+            <button id="btn-login" class="btn auth-signin-btn">
+              <svg class="auth-btn-icon" viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M3 4.25A2.25 2.25 0 015.25 2h5.5A2.25 2.25 0 0113 4.25v2a.75.75 0 01-1.5 0v-2a.75.75 0 00-.75-.75h-5.5a.75.75 0 00-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 00.75-.75v-2a.75.75 0 011.5 0v2A2.25 2.25 0 0110.75 18h-5.5A2.25 2.25 0 013 15.75V4.25z" clip-rule="evenodd"/><path fill-rule="evenodd" d="M19 10a.75.75 0 00-.75-.75H8.704l1.048-.943a.75.75 0 10-1.004-1.114l-2.5 2.25a.75.75 0 000 1.114l2.5 2.25a.75.75 0 101.004-1.114l-1.048-.943h9.546A.75.75 0 0019 10z" clip-rule="evenodd"/></svg>
+              SIGN IN
+            </button>
+          </div>
+
+          <!-- Forgot password panel (2-step: email → security question → reset) -->
+          <div id="forgot-password-panel" class="forgot-panel hidden">
+            <div class="auth-form-grid auth-form-grid--tight">
+              <!-- Step 1: Enter email -->
+              <div id="forgot-step-email">
+                <label class="auth-field">
+                  <span>Email</span>
+                  <input type="text" id="forgot-email" class="auth-input" placeholder="name@ind.tuv.com" />
+                </label>
+                <button id="btn-forgot-lookup" class="btn auth-reset-btn" type="button">Next</button>
+              </div>
+              <!-- Step 2: Answer question + set new password -->
+              <div id="forgot-step-answer" class="hidden">
+                <label class="auth-field">
+                  <span id="forgot-question-label" class="forgot-question-text">Security Question</span>
+                </label>
+                <label class="auth-field">
+                  <span>Your Answer</span>
+                  <input type="text" id="forgot-answer" class="auth-input" placeholder="Type your answer" autocomplete="off" />
+                </label>
+                <label class="auth-field">
+                  <span>New Password</span>
+                  <input type="password" id="forgot-new-password" class="auth-input" placeholder="Enter new password" />
+                </label>
+                <label class="auth-field">
+                  <span>Confirm Password</span>
+                  <input type="password" id="forgot-confirm-password" class="auth-input" placeholder="Re-enter new password" />
+                </label>
+                <div style="display:flex;gap:8px">
+                  <button id="btn-forgot-back" class="btn auth-reset-btn" type="button" style="flex:1">Back</button>
+                  <button id="btn-forgot-password" class="btn auth-signin-btn" type="button" style="flex:2">Reset Password</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Registration form (hidden by default) -->
+          <div id="register-form-section" class="auth-form-grid hidden">
+            <label class="auth-field">
+              <span>Full Name</span>
+              <input type="text" id="reg-full-name" class="auth-input" placeholder="e.g. Rahul Sharma" autocomplete="name" />
+            </label>
+            <label class="auth-field">
+              <span>Email</span>
+              <input type="email" id="reg-email" class="auth-input" placeholder="name@ind.tuv.com" autocomplete="email" />
+            </label>
+            <label class="auth-field">
+              <span>Designation</span>
+              <input type="text" id="reg-designation" class="auth-input" placeholder="e.g. Senior Engineer - Civil" />
+            </label>
+            <label class="auth-field">
+              <span>Password</span>
+              <input type="password" id="reg-password" class="auth-input" placeholder="Min 8 characters" autocomplete="new-password" />
+            </label>
+            <label class="auth-field">
+              <span>Confirm Password</span>
+              <input type="password" id="reg-confirm-password" class="auth-input" placeholder="Re-enter password" autocomplete="new-password" />
+            </label>
+            <label class="auth-field">
+              <span>Security Question</span>
+              <select id="reg-security-question" class="auth-input">
+                <option value="">— Select a question —</option>
+              </select>
+            </label>
+            <label class="auth-field">
+              <span>Security Answer</span>
+              <input type="text" id="reg-security-answer" class="auth-input" placeholder="Your answer (used for password recovery)" autocomplete="off" />
+            </label>
+            <button id="btn-register" class="btn auth-signin-btn" type="button">
+              <svg class="auth-btn-icon" viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg>
+              CREATE ACCOUNT
+            </button>
+          </div>
+
+          <!-- Toggle between login and register -->
+          <p class="auth-assist-note">
+            <span id="auth-toggle-text">Don't have an account?</span>
+            <button id="btn-auth-toggle" class="auth-forgot-link" type="button" style="margin-left:4px">Create Account</button>
+          </p>
+        </div>
+        <div id="auth-feedback" class="feedback hidden"></div>
+      </section>
+    </section>
+
+    <div id="dashboard-shell" class="hidden">
+    <section class="hero-bar animate-rise">
+      <div class="hero-bar-left">
+        <h1>Dashboard</h1>
+        <div class="hero-bar-breadcrumb" id="breadcrumb"><span>Home</span></div>
+      </div>
+      <div class="hero-bar-stats">
+        <div class="hero-stat">
+          <span class="hero-stat-val" id="hero-pending">0</span>
+          <span class="hero-stat-label">Pending</span>
+        </div>
+        <div class="hero-stat-divider"></div>
+        <div class="hero-stat">
+          <span class="hero-stat-val hero-stat-val--teal" id="hero-quoted">0</span>
+          <span class="hero-stat-label">Quoted</span>
+        </div>
+        <div class="hero-stat-divider"></div>
+        <div class="hero-stat">
+          <span class="hero-stat-val hero-stat-val--green" id="hero-converted">0</span>
+          <span class="hero-stat-label">Converted</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-nav animate-rise delay-1">
+      <button class="section-tab active" data-tab="overview">Home</button>
+      <button class="section-tab" data-tab="enquiries">New Enquiries</button>
+      <button class="section-tab" data-tab="studio">Quote Studio</button>
+      <button class="section-tab" data-tab="pipeline">Pipeline</button>
+      <button class="section-tab" data-tab="admin">Admin</button>
+    </section>
+
+    <section class="tab-panel active" id="tab-overview">
+      <div class="metrics-grid">
+        <article class="metric-card metric-card-total animate-rise delay-1">
+          <div class="metric-label">Total Enquiries</div>
+          <div class="metric-value" id="m-total">0</div>
+        </article>
+        <article class="metric-card metric-card-pending animate-rise delay-2">
+          <div class="metric-label">Pending Review</div>
+          <div class="metric-value" id="m-pending">0</div>
+        </article>
+        <article class="metric-card metric-card-quoted animate-rise delay-3">
+          <div class="metric-label">Quotes Sent</div>
+          <div class="metric-value" id="m-quoted">0</div>
+        </article>
+        <article class="metric-card metric-card-converted animate-rise delay-4">
+          <div class="metric-label">Converted</div>
+          <div class="metric-value" id="m-converted">0</div>
+        </article>
+        <article class="metric-card metric-revenue metric-card-qrev animate-rise delay-5">
+          <div class="metric-label">Quoted Revenue</div>
+          <div class="metric-value" id="m-quoted-revenue">₹ 0.00</div>
+        </article>
+        <article class="metric-card metric-realized-revenue metric-card-crev animate-rise delay-5">
+          <div class="metric-label">Converted Revenue</div>
+          <div class="metric-value" id="m-converted-revenue">₹ 0.00</div>
+        </article>
+      </div>
+
+      <div class="overview-grid">
+        <section class="card">
+          <div class="card-header">Quick Actions</div>
+          <div class="card-body">
+            <div class="excel-source-panel">
+              <div class="excel-source-copy">
+                <div class="excel-source-topline">
+                  <div class="excel-source-label">Connected Workbook</div>
+                  <div id="excel-source-badge" class="excel-source-badge">Checking</div>
+                </div>
+                <div id="excel-source-name" class="excel-source-name">Checking workbook...</div>
+                <div id="excel-source-path" class="excel-source-path"></div>
+              </div>
+
+            </div>
+            <div class="overview-actions">
+              <button class="btn btn-primary" data-jump-tab="enquiries">New Enquiries</button>
+              <button class="btn btn-outline" data-jump-tab="studio">Quote Studio</button>
+              <button class="btn btn-outline" data-jump-tab="pipeline">Pipeline</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">Workflow</div>
+          <div class="card-body">
+            <div class="workflow-steps">
+              <div class="workflow-step">
+                <div class="workflow-step-num">1</div>
+                <div><strong>New Enquiries</strong><p>Select a client from the incoming enquiry list.</p></div>
+              </div>
+              <div class="workflow-step">
+                <div class="workflow-step-num">2</div>
+                <div><strong>Quote Studio</strong><p>Review details, apply discount, and generate quotation.</p></div>
+              </div>
+              <div class="workflow-step">
+                <div class="workflow-step-num">3</div>
+                <div><strong>Download &amp; Send</strong><p>Download PDF or create email draft.</p></div>
+              </div>
+              <div class="workflow-step">
+                <div class="workflow-step-num">4</div>
+                <div><strong>Pipeline</strong><p>Track status, payments, and follow-ups.</p></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-enquiries">
+      <div class="card">
+        <div class="card-header">Pending Clients <span class="badge" id="pending-count">0</span></div>
+        <div class="card-body">
+          <div class="toolbar-row">
+            <input type="text" id="pending-search" class="search-input" placeholder="Search by name, phone, or location..." />
+            <select id="pending-property-filter" class="filter-select">
+              <option value="all">All Property Types</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="pending-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Phone</th>
+                  <th>Property Type</th>
+                  <th>Structure Type</th>
+                  <th>Area</th>
+                  <th>Building Age</th>
+                  <th>Urgency</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="pending-body">
+                <tr><td colspan="8" class="muted">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-studio">
+      <div class="card" id="detail-card">
+        <div class="card-header">Quote Studio</div>
+        <div class="card-body">
+          <div id="detail-empty" class="studio-empty">
+            <div class="studio-empty-mark">Quotation Studio</div>
+            <div class="studio-empty-title">No Client Selected</div>
+            <p class="studio-empty-hint">Select a pending client from <strong>New Enquiries</strong> to begin.</p>
+          </div>
+
+          <div id="detail-panel" class="hidden">
+            <div class="detail-grid">
+              <div><label>Name</label><div id="d-name" class="detail-val"></div></div>
+              <div><label>Phone</label><div id="d-phone" class="detail-val"></div></div>
+              <div><label>Location</label><div id="d-location" class="detail-val"></div></div>
+              <div><label>Property Type</label><div id="d-property" class="detail-val"></div></div>
+              <div><label>Structure Type</label><div id="d-structure" class="detail-val"></div></div>
+              <div><label>Area</label><div id="d-area" class="detail-val"></div></div>
+              <div><label>Building Age</label><div id="d-age" class="detail-val"></div></div>
+              <div><label>Urgency</label><div id="d-urgency" class="detail-val"></div></div>
+              <div><label>Issues</label><div id="d-issue" class="detail-val"></div></div>
+            </div>
+
+            <div class="quote-preview">
+              <div>Service: <strong id="d-service-name">Building Health Check</strong></div>
+              <div>Structure Type: <strong id="d-structure-preview">-</strong></div>
+              <div>Base Fee (excl. GST): <strong id="d-price-base">₹ 0.00</strong></div>
+              <div id="d-urgency-row" class="hidden">Urgency Surcharge: <strong id="d-urgency-surcharge">₹ 0.00</strong></div>
+              <div>GST (<span id="d-gst-pct">18</span>%): <strong id="d-gst-amount">₹ 0.00</strong></div>
+              <div>Total (incl. GST): <strong id="d-price">₹ 0.00</strong></div>
+              <div>Reference: <strong id="d-ref">-</strong></div>
+            </div>
+
+            <div class="toolbar-row">
+              <input type="number" id="discount-percent" class="search-input" min="0" max="100" step="0.1" placeholder="Discount % (optional before generate)" />
+            </div>
+
+            <div class="actions-row">
+              <button id="btn-generate" class="btn btn-primary">Generate Quote</button>
+              <button id="btn-download-pdf" class="btn btn-pdf" disabled>Download PDF</button>
+              <button id="btn-send-email" class="btn btn-outline" disabled>Send via Email</button>
+            </div>
+            <div id="detail-feedback" class="feedback hidden"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-pipeline">
+      <section class="card">
+        <div class="card-header">Pipeline Management <span class="badge" id="processed-count">0</span></div>
+        <div class="card-body">
+          <div class="sync-legend" aria-label="Save state legend">
+            <span class="sync-pill saved">Saved in DB</span>
+            <span class="sync-pill dirty">Unsaved changes</span>
+            <span class="sync-pill saving">Saving...</span>
+            <span class="sync-pill error">Save failed</span>
+          </div>
+          <div class="toolbar-row">
+            <input type="text" id="processed-search" class="search-input" placeholder="Search processed records..." />
+            <select id="processed-status-filter" class="filter-select">
+              <option value="all">All Status</option>
+              <option value="Quoted">Quoted</option>
+              <option value="Converted">Converted</option>
+              <option value="Dropped">Dropped</option>
+            </select>
+            <select id="processed-payment-filter" class="filter-select">
+              <option value="all">All Payment</option>
+              <option value="Pending">Pending</option>
+              <option value="Paid">Paid</option>
+            </select>
+          </div>
+          <details class="advanced-filters">
+            <summary>Advanced Filters (Property Type and Date Range)</summary>
+            <div class="toolbar-row advanced-grid">
+              <select id="processed-property-filter" class="filter-select">
+                <option value="all">All Property Types</option>
+              </select>
+              <input type="date" id="processed-date-from" class="search-input" />
+              <input type="date" id="processed-date-to" class="search-input" />
+            </div>
+          </details>
+          <div class="table-wrap">
+            <table class="data-table" id="processed-table">
+              <thead>
+                <tr>
+                  <th>Enquiry ID</th>
+                  <th>Name</th>
+                  <th>Phone</th>
+                  <th>Area</th>
+                  <th>Quoted Amount</th>
+                  <th>Status</th>
+                  <th>Payment</th>
+                  <th>Remarks</th>
+                  <th>Sync</th>
+                  <th>Update</th>
+                </tr>
+              </thead>
+              <tbody id="processed-body">
+                <tr><td colspan="10" class="muted">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="tab-panel" id="tab-admin">
+      <span id="admin-db-path" class="hidden"></span>
+      <!-- Admin login gate -->
+      <div id="admin-login-card" class="admin-login-card">
+        <div class="admin-login-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div class="admin-login-copy">
+          <h3>Admin Access Required</h3>
+          <p class="muted left" id="admin-login-help">Sign in as admin to manage shared settings, create users, and resolve password requests.</p>
+        </div>
+      </div>
+
+      <!-- Admin config panels (shown after auth) -->
+      <div id="admin-config-card" class="hidden admin-config-panels">
+
+        <!-- Company Details -->
+        <section class="admin-card admin-card--blue admin-locked" data-admin-section="company">
+          <div class="admin-card-head">
+            <div class="admin-card-icon admin-card-icon--blue">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            </div>
+            <div class="admin-card-meta">
+              <h3>Company Details</h3>
+              <p>Organization name, address, and contact information for quotations</p>
+            </div>
+            <div class="admin-card-actions">
+              <button class="btn btn-outline btn-admin-edit admin-only" data-edit-section="company">Edit</button>
+              <button class="btn btn-outline btn-admin-cancel hidden" data-cancel-section="company">Cancel</button>
+              <button id="btn-save-company" class="btn btn-primary hidden">Save Company</button>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            <div class="admin-section-grid">
+              <label>
+                <span>Company Name</span>
+                <input type="text" id="admin-company-name" class="search-input" />
+              </label>
+              <label>
+                <span>Subtitle</span>
+                <input type="text" id="admin-company-subtitle" class="search-input" />
+              </label>
+              <label class="admin-field-wide">
+                <span>Address</span>
+                <input type="text" id="admin-company-address" class="search-input" />
+              </label>
+              <label>
+                <span>Phone</span>
+                <input type="text" id="admin-company-phone" class="search-input" />
+              </label>
+              <label>
+                <span>Email</span>
+                <input type="text" id="admin-company-email" class="search-input" />
+              </label>
+              <label>
+                <span>Contact Name</span>
+                <input type="text" id="admin-contact-name" class="search-input" />
+              </label>
+              <label>
+                <span>Urgency Surcharge %</span>
+                <input type="number" id="admin-urgency-surcharge" class="search-input" min="0" max="100" step="0.1" />
+              </label>
+              <label>
+                <span>GST %</span>
+                <input type="number" id="admin-gst-percent" class="search-input" min="0" max="100" step="0.1" />
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- Pricing Slabs -->
+        <section class="admin-card admin-card--amber admin-locked" data-admin-section="pricing">
+          <div class="admin-card-head">
+            <div class="admin-card-icon admin-card-icon--amber">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><text x="5" y="18" font-size="16" font-weight="bold" fill="currentColor" stroke="none">₹</text></svg>
+            </div>
+            <div class="admin-card-meta">
+              <h3>Pricing Slabs</h3>
+              <p>Configure area-based pricing tiers for quotation calculations</p>
+            </div>
+            <div class="admin-card-actions">
+              <button class="btn btn-outline btn-admin-edit admin-only" data-edit-section="pricing">Edit</button>
+              <button class="btn btn-outline btn-admin-cancel hidden" data-cancel-section="pricing">Cancel</button>
+              <button id="btn-add-pricing-row" class="btn btn-outline hidden">Add Slab</button>
+              <button id="btn-add-new-building-pricing-row" class="btn btn-outline hidden">Add New Building Slab</button>
+              <button id="btn-save-pricing" class="btn btn-primary hidden">Save Pricing</button>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            <h4 class="admin-sub-heading">Existing / Older Buildings (5+ years)</h4>
+            <div class="table-wrap admin-table-wrap">
+              <table class="data-table admin-pricing-table">
+                <thead>
+                  <tr>
+                    <th>Min Area</th>
+                    <th>Max Area</th>
+                    <th>Label</th>
+                    <th>Quoted Price</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-pricing-body"></tbody>
+              </table>
+            </div>
+            <h4 class="admin-sub-heading" style="margin-top:1.2rem;">New Building (0-5 years)</h4>
+            <div class="table-wrap admin-table-wrap">
+              <table class="data-table admin-pricing-table">
+                <thead>
+                  <tr>
+                    <th>Min Area</th>
+                    <th>Max Area</th>
+                    <th>Label</th>
+                    <th>Quoted Price</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-new-building-pricing-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- User Access -->
+        <section class="admin-card admin-card--teal admin-locked" data-admin-section="users">
+          <div class="admin-card-head">
+            <div class="admin-card-icon admin-card-icon--teal">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div class="admin-card-meta">
+              <h3>User Access</h3>
+              <p>Create accounts and manage user roles and permissions</p>
+            </div>
+            <div class="admin-card-actions">
+              <button class="btn btn-outline btn-admin-edit admin-only" data-edit-section="users">Edit</button>
+              <button class="btn btn-outline btn-admin-cancel hidden" data-cancel-section="users">Cancel</button>
+              <button id="btn-create-user" class="btn btn-primary hidden">Create User</button>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            <div class="admin-section-grid">
+              <label>
+                <span>Full Name</span>
+                <input type="text" id="admin-user-full-name" class="search-input" />
+              </label>
+              <label>
+                <span>Designation</span>
+                <input type="text" id="admin-user-designation" class="search-input" placeholder="e.g. Senior Engineer - Civil" />
+              </label>
+              <label>
+                <span>Email</span>
+                <input type="email" id="admin-user-email" class="search-input" placeholder="name@ind.tuv.com" />
+              </label>
+              <label>
+                <span>Temporary Password</span>
+                <input type="password" id="admin-user-password" class="search-input" />
+              </label>
+              <label>
+                <span>Signature Image (PNG/JPG, max 500KB)</span>
+                <input type="file" id="admin-user-signature" class="search-input" accept=".png,.jpg,.jpeg" />
+              </label>
+              <label class="admin-checkbox-row">
+                <span>Role</span>
+                <div class="checkbox-inline">
+                  <input type="checkbox" id="admin-user-is-admin" />
+                  <span>Grant admin access</span>
+                </div>
+              </label>
+            </div>
+            <div class="table-wrap admin-table-wrap top-gap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Designation</th>
+                    <th>Signature</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Password State</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-users-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Quotation Content -->
+        <section class="admin-card admin-card--indigo admin-locked" data-admin-section="document">
+          <div class="admin-card-head">
+            <div class="admin-card-icon admin-card-icon--indigo">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            </div>
+            <div class="admin-card-meta">
+              <h3>Quotation Content</h3>
+              <p>Company profile, service descriptions, terms, and deliverables for generated quotations</p>
+            </div>
+            <div class="admin-card-actions">
+              <button class="btn btn-outline btn-admin-edit admin-only" data-edit-section="document">Edit</button>
+              <button class="btn btn-outline btn-admin-cancel hidden" data-cancel-section="document">Cancel</button>
+              <button id="btn-save-document" class="btn btn-primary hidden">Save Content</button>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            <div class="admin-section-grid">
+              <label class="admin-field-wide">
+                <span>Company Profile Paragraphs</span>
+                <textarea id="admin-company-profile" class="search-input admin-textarea" placeholder="One paragraph per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>TUV History Paragraphs</span>
+                <textarea id="admin-tuv-history" class="search-input admin-textarea" placeholder="One paragraph per line"></textarea>
+              </label>
+              <label>
+                <span>Service Capabilities</span>
+                <textarea id="admin-service-capabilities" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+              <label>
+                <span>Deliverables</span>
+                <textarea id="admin-deliverables" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+              <label>
+                <span>Payment Terms</span>
+                <textarea id="admin-payment-terms" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+              <label>
+                <span>Other Terms</span>
+                <textarea id="admin-other-terms" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>System Generated Note</span>
+                <textarea id="admin-system-note" class="search-input admin-textarea admin-textarea-small"></textarea>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- Scope of Work -->
+        <section class="admin-card admin-card--slate admin-locked" data-admin-section="scope">
+          <div class="admin-card-head">
+            <div class="admin-card-icon admin-card-icon--slate">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </div>
+            <div class="admin-card-meta">
+              <h3>Scope of Work</h3>
+              <p>Define inspection scope text per structure type (RCC, Steel, Combined) used in quotations</p>
+            </div>
+            <div class="admin-card-actions">
+              <button class="btn btn-outline btn-admin-edit admin-only" data-edit-section="scope">Edit</button>
+              <button class="btn btn-outline btn-admin-cancel hidden" data-cancel-section="scope">Cancel</button>
+              <button id="btn-save-scope" class="btn btn-primary hidden">Save Scope</button>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            <div class="admin-section-grid">
+              <label class="admin-field-wide">
+                <span>RCC Scope of Work</span>
+                <textarea id="admin-scope-rcc" class="search-input admin-textarea" placeholder="One scope item per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>Steel Scope of Work</span>
+                <textarea id="admin-scope-steel" class="search-input admin-textarea" placeholder="One scope item per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>Combined (RCC + Steel) Scope of Work</span>
+                <textarea id="admin-scope-both" class="search-input admin-textarea" placeholder="One scope item per line"></textarea>
+              </label>
+            </div>
+            <h4 class="admin-sub-heading">New Building (0-5 years) Scope of Work</h4>
+            <div class="admin-section-grid">
+              <label class="admin-field-wide">
+                <span>New Building - RCC Scope of Work</span>
+                <textarea id="admin-scope-new-rcc" class="search-input admin-textarea" placeholder="One scope item per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>New Building - Steel Scope of Work</span>
+                <textarea id="admin-scope-new-steel" class="search-input admin-textarea" placeholder="One scope item per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>New Building - Combined (RCC + Steel) Scope of Work</span>
+                <textarea id="admin-scope-new-both" class="search-input admin-textarea" placeholder="One scope item per line"></textarea>
+              </label>
+            </div>
+            <h4 class="admin-sub-heading">Support Documents Required</h4>
+            <div class="admin-section-grid">
+              <label class="admin-field-wide">
+                <span>RCC Support Documents</span>
+                <textarea id="admin-support-rcc" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>Steel Support Documents</span>
+                <textarea id="admin-support-steel" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>Combined Support Documents</span>
+                <textarea id="admin-support-both" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+            </div>
+            <h4 class="admin-sub-heading">New Building (0-5 years) Support Documents</h4>
+            <div class="admin-section-grid">
+              <label class="admin-field-wide">
+                <span>New Building - RCC Support Documents</span>
+                <textarea id="admin-support-new-rcc" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>New Building - Steel Support Documents</span>
+                <textarea id="admin-support-new-steel" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+              <label class="admin-field-wide">
+                <span>New Building - Combined Support Documents</span>
+                <textarea id="admin-support-new-both" class="search-input admin-textarea" placeholder="One item per line"></textarea>
+              </label>
+            </div>
+          </div>
+        </section>
+
+      </div>
+      <div id="admin-feedback" class="feedback hidden"></div>
+    </section>
+
+    </div>
+  </main>
+
+  <!-- Confirmation Modal -->
+  <div id="confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-icon" id="confirm-modal-icon"></div>
+      <h3 id="confirm-modal-title" class="modal-title">Confirm Action</h3>
+      <p id="confirm-modal-message" class="modal-message">Are you sure?</p>
+      <div class="modal-actions">
+        <button id="confirm-modal-cancel" class="btn btn-outline">Cancel</button>
+        <button id="confirm-modal-confirm" class="btn btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF Preview Modal -->
+  <div id="pdf-preview-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-card--preview">
+      <div class="preview-header">
+        <h3 class="modal-title">Quotation Preview</h3>
+        <button id="preview-close" class="preview-close-btn" type="button" title="Close">&times;</button>
+      </div>
+      <p class="preview-subtitle">Review the quotation below. Insert your signature when ready, then download.</p>
+      <div class="preview-embed-wrap">
+        <iframe id="pdf-preview-frame" class="preview-iframe"></iframe>
+        <div id="preview-loading" class="preview-loading">Generating preview&hellip;</div>
+      </div>
+      <div class="preview-actions">
+        <button id="preview-cancel" class="btn btn-outline">Cancel</button>
+        <button id="preview-insert-sig" class="btn btn-primary">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15"><path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192-1.192.24a1 1 0 000 1.96l1.192.24.24 1.192a1 1 0 001.96 0l.24-1.192 1.192-.24a1 1 0 000-1.96l-1.192-.24-.24-1.192zM2.22 12.78a.75.75 0 001.06 0l7.5-7.5a.75.75 0 00-1.06-1.06l-7.5 7.5a.75.75 0 000 1.06z"/><path d="M2 17.25a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z"/></svg>
+          Insert Signature &amp; Download
+        </button>
+      </div>
+      <div id="preview-feedback" class="feedback hidden"></div>
+    </div>
+  </div>
+
+  <!-- Notification Center -->
+  <div id="notification-center" class="notification-center"></div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Enterprise Footer -->
+  <footer class="app-footer" id="app-footer">
+    <div class="app-footer-inner">
+      <div class="footer-brand">
+        <span>TUV Rheinland India</span>
+      </div>
+      <div class="footer-meta">
+        <span>BHC Portal v2.0</span>
+        <span class="footer-sep">|</span>
+        <span id="footer-year">2026</span>
+        <span class="footer-sep">|</span>
+        <span id="system-status" class="footer-status"><span class="status-dot status-dot--ok"></span> Online</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/bhc/script.js"></script>
+</body>
+</html>
