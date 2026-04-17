@@ -17,7 +17,7 @@ const state = {
 };
 
 const AUTO_REFRESH_MS = 15000;
-const API_TIMEOUT_MS = 20000;
+const API_TIMEOUT_MS = 45000;
 const API_GET_RETRY_COUNT = 1;
 const SESSION_CHECK_INTERVAL_MS = 60000;
 const TAB_STORAGE_KEY = "bhc_active_tab";
@@ -163,6 +163,13 @@ const el = {
 
   adminFeedback: () => document.getElementById("admin-feedback"),
 
+  btnLoadAudit: () => document.getElementById("btn-load-audit"),
+  auditFilterType: () => document.getElementById("audit-filter-type"),
+  auditLogBody: () => document.getElementById("audit-log-body"),
+  auditLogWrap: () => document.getElementById("audit-log-wrap"),
+  auditLogEmpty: () => document.getElementById("audit-log-empty"),
+  auditLogCount: () => document.getElementById("audit-log-count"),
+
   adminCompanyName: () => document.getElementById("admin-company-name"),
   adminCompanySubtitle: () => document.getElementById("admin-company-subtitle"),
   adminCompanyAddress: () => document.getElementById("admin-company-address"),
@@ -199,6 +206,16 @@ const el = {
   adminSupportNewRcc: () => document.getElementById("admin-support-new-rcc"),
   adminSupportNewSteel: () => document.getElementById("admin-support-new-steel"),
   adminSupportNewBoth: () => document.getElementById("admin-support-new-both"),
+
+  // Quotation Sections admin
+  qsList: () => document.getElementById("qs-list"),
+  btnSaveQSections: () => document.getElementById("btn-save-qsections"),
+  btnAddQs: () => document.getElementById("btn-add-qs"),
+  qsAddModal: () => document.getElementById("qs-add-modal"),
+  qsNewHeading: () => document.getElementById("qs-new-heading"),
+  qsInsertAfter: () => document.getElementById("qs-insert-after"),
+  btnQsAddConfirm: () => document.getElementById("btn-qs-add-confirm"),
+  btnQsAddCancel: () => document.getElementById("btn-qs-add-cancel"),
 
   // Studio building age
   dAge: () => document.getElementById("d-age"),
@@ -1118,8 +1135,81 @@ function populateAdminForm() {
   renderAdminPricingRows();
   renderAdminUsers();
   populateAdminScopeFields();
+  renderQSSectionsList();
   lockAllAdminSections();
   updateAdminEditVisibility();
+}
+
+/* ── Audit Log ────────────────────────────────────────── */
+let _auditData = null;
+
+async function loadAuditLogs() {
+  try {
+    el.btnLoadAudit().disabled = true;
+    el.btnLoadAudit().textContent = "Loading…";
+    const r = await api("/api/bhc/admin/audit-events?limit=500");
+    _auditData = await r.json();
+    renderAuditLogs();
+    toast("Audit logs loaded", "success");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    el.btnLoadAudit().disabled = false;
+    el.btnLoadAudit().textContent = "Load Logs";
+  }
+}
+
+function renderAuditLogs() {
+  if (!_auditData) return;
+  const filter = el.auditFilterType().value;
+  const ROUTINE = new Set(["AUTH_LOGIN_SUCCESS","AUTH_LOGIN_FAILED","AUTH_LOGOUT","AUTH_PASSWORD_CHANGED"]);
+  let events = [];
+  (_auditData.security_events || []).forEach(e => events.push({ ...e, _source: "security" }));
+  (_auditData.workflow_events || []).forEach(e => events.push({ ...e, _source: "workflow" }));
+  if (filter === "important") {
+    events = events.filter(e => !ROUTINE.has(e.event_type));
+  }
+  events.sort((a, b) => b.id - a.id || b.event_time.localeCompare(a.event_time));
+
+  const body = el.auditLogBody();
+  if (!events.length) {
+    body.innerHTML = '<tr><td colspan="6" class="muted">No events found.</td></tr>';
+    el.auditLogWrap().classList.remove("hidden");
+    el.auditLogEmpty().classList.add("hidden");
+    el.auditLogCount().classList.add("hidden");
+    return;
+  }
+
+  body.innerHTML = events.map(e => {
+    const time = e.event_time ? e.event_time.replace("T", " ").slice(0, 19) : "—";
+    const sevClass = (e.severity || "INFO").toLowerCase();
+    const meta = e.metadata || e.enquiry_id ? formatAuditMeta(e) : "";
+    const target = e.target || e.enquiry_id || "—";
+    return `<tr>
+      <td>${escHtml(time)}</td>
+      <td><span class="audit-type">${escHtml(e.event_type)}</span></td>
+      <td><span class="audit-sev audit-sev--${sevClass}">${escHtml(e.severity)}</span></td>
+      <td>${escHtml(e.actor_email)}</td>
+      <td>${escHtml(target)}</td>
+      <td>${meta}</td>
+    </tr>`;
+  }).join("");
+
+  el.auditLogWrap().classList.remove("hidden");
+  el.auditLogEmpty().classList.add("hidden");
+  el.auditLogCount().classList.remove("hidden");
+  el.auditLogCount().textContent = `Showing ${events.length} event${events.length !== 1 ? "s" : ""}`;
+}
+
+function formatAuditMeta(e) {
+  const parts = [];
+  const m = e.metadata || {};
+  if (e.enquiry_id) parts.push(`Enquiry: ${e.enquiry_id}`);
+  for (const [k, v] of Object.entries(m)) {
+    if (k === "raw") { parts.push(String(v)); continue; }
+    parts.push(`${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`);
+  }
+  return parts.length ? escHtml(parts.join(", ")) : "";
 }
 
 async function loadSession() {
@@ -1296,6 +1386,393 @@ async function onSaveScope() {
     setAdminFeedback("Scope of work and support documents saved.", "success");
     toast("Scope of work saved", "success");
     lockAdminSection("scope");
+  } catch (err) {
+    setAdminFeedback(err.message, "error");
+    toast(err.message, "error");
+  }
+}
+
+// ── Quotation Sections admin ────────────────────────────────────────
+
+let _qsDragSrcId = null;
+let _qsEditingId = null;
+let _qsLocalSections = [];
+
+function renderQSSectionsList() {
+  const sections = state.adminConfig?.quotation_sections || [];
+  _qsLocalSections = JSON.parse(JSON.stringify(sections));
+  _renderQSItems();
+}
+
+function _renderQSItems() {
+  const container = el.qsList();
+  if (!container) return;
+  const isLocked = container.closest("[data-admin-section]")?.classList.contains("admin-locked");
+
+  container.innerHTML = _qsLocalSections.map((sec, idx) => {
+    const typeLabel = { list: "Numbered List", paragraph: "Paragraphs", table: "Table", dynamic: "Dynamic" }[sec.content_type] || sec.content_type;
+    const systemBadge = sec.is_system ? '<span class="qs-badge qs-badge--system">System</span>' : '<span class="qs-badge qs-badge--custom">Custom</span>';
+    const hiddenBadge = !sec.is_visible ? '<span class="qs-badge qs-badge--hidden">Hidden</span>' : '';
+    const isDynamic = sec.content_type === "dynamic";
+
+    return `
+      <div class="qs-item" data-qs-id="${sec.id}" data-qs-idx="${idx}" draggable="${!isLocked}">
+        <div class="qs-drag-handle" title="Drag to reorder">&#9776;</div>
+        <div class="qs-item-info">
+          <div class="qs-item-heading">${escHtml(sec.heading)}</div>
+          <div class="qs-item-meta">${systemBadge}${hiddenBadge} ${escHtml(typeLabel)} &middot; Order: ${sec.sort_order}</div>
+        </div>
+        <label class="qs-toggle" title="${sec.is_visible ? 'Visible — click to hide' : 'Hidden — click to show'}">
+          <input type="checkbox" ${sec.is_visible ? 'checked' : ''} data-qs-toggle="${sec.id}" />
+          <span class="qs-toggle-slider"></span>
+        </label>
+        <div class="qs-item-actions">
+          ${!isDynamic ? `<button class="btn btn-outline btn-sm" data-qs-edit="${sec.id}">Edit</button>` : ''}
+          ${!sec.is_system ? `<button class="btn btn-outline btn-sm" style="color:#dc2626" data-qs-delete="${sec.id}">Delete</button>` : ''}
+        </div>
+      </div>
+      <div id="qs-edit-panel-${sec.id}" class="qs-edit-panel hidden"></div>
+    `;
+  }).join("");
+
+  // Bind drag events
+  container.querySelectorAll(".qs-item[draggable='true']").forEach(item => {
+    item.addEventListener("dragstart", _onQsDragStart);
+    item.addEventListener("dragover", _onQsDragOver);
+    item.addEventListener("dragleave", _onQsDragLeave);
+    item.addEventListener("drop", _onQsDrop);
+    item.addEventListener("dragend", _onQsDragEnd);
+  });
+
+  // Bind toggle events
+  container.querySelectorAll("[data-qs-toggle]").forEach(toggle => {
+    toggle.addEventListener("change", _onQsToggle);
+  });
+
+  // Bind edit events
+  container.querySelectorAll("[data-qs-edit]").forEach(btn => {
+    btn.addEventListener("click", () => _openQsEdit(Number(btn.dataset.qsEdit)));
+  });
+
+  // Bind delete events
+  container.querySelectorAll("[data-qs-delete]").forEach(btn => {
+    btn.addEventListener("click", () => _onQsDelete(Number(btn.dataset.qsDelete)));
+  });
+}
+
+function _onQsDragStart(e) {
+  _qsDragSrcId = Number(e.currentTarget.dataset.qsId);
+  e.currentTarget.classList.add("qs-dragging");
+  e.dataTransfer.effectAllowed = "move";
+}
+
+function _onQsDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  e.currentTarget.classList.add("qs-drag-over");
+}
+
+function _onQsDragLeave(e) {
+  e.currentTarget.classList.remove("qs-drag-over");
+}
+
+function _onQsDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove("qs-drag-over");
+  const targetId = Number(e.currentTarget.dataset.qsId);
+  if (_qsDragSrcId === null || _qsDragSrcId === targetId) return;
+
+  const srcIdx = _qsLocalSections.findIndex(s => s.id === _qsDragSrcId);
+  const tgtIdx = _qsLocalSections.findIndex(s => s.id === targetId);
+  if (srcIdx < 0 || tgtIdx < 0) return;
+
+  const [moved] = _qsLocalSections.splice(srcIdx, 1);
+  _qsLocalSections.splice(tgtIdx, 0, moved);
+  _qsLocalSections.forEach((s, i) => s.sort_order = (i + 1) * 10);
+  _renderQSItems();
+}
+
+function _onQsDragEnd(e) {
+  e.currentTarget.classList.remove("qs-dragging");
+  _qsDragSrcId = null;
+}
+
+async function _onQsToggle(e) {
+  const secId = Number(e.target.dataset.qsToggle);
+  const visible = e.target.checked;
+  try {
+    const r = await api(`/api/bhc/admin/quotation-sections/${secId}`, {
+      method: "PUT",
+      body: JSON.stringify({ is_visible: visible }),
+    });
+    const data = await r.json();
+    // Update local
+    const idx = _qsLocalSections.findIndex(s => s.id === secId);
+    if (idx >= 0) _qsLocalSections[idx] = data.section;
+    _renderQSItems();
+    toast(`Section ${visible ? 'shown' : 'hidden'}`, "success");
+  } catch (err) {
+    toast(err.message, "error");
+    e.target.checked = !visible; // revert
+  }
+}
+
+function _openQsEdit(secId) {
+  const sec = _qsLocalSections.find(s => s.id === secId);
+  if (!sec) return;
+  // Close any other open panel
+  document.querySelectorAll(".qs-edit-panel").forEach(p => p.classList.add("hidden"));
+
+  const panel = document.getElementById(`qs-edit-panel-${secId}`);
+  if (!panel) return;
+
+  const contentLines = (sec.content || []).map(item => {
+    if (typeof item === "object") return JSON.stringify(item);
+    return String(item);
+  }).join("\n");
+
+  panel.innerHTML = `
+    <label><span>Heading</span>
+      <input id="qs-edit-heading-${secId}" class="search-input" value="${escHtml(sec.heading)}" />
+    </label>
+    <label><span>Content (one item per line${sec.content_type === 'table' ? ', JSON objects' : ''})</span>
+      <textarea id="qs-edit-content-${secId}" class="search-input admin-textarea" rows="6">${escHtml(contentLines)}</textarea>
+    </label>
+    <div class="qs-edit-actions">
+      <button class="btn btn-primary btn-sm" id="qs-edit-save-${secId}">Save</button>
+      <button class="btn btn-outline btn-sm" id="qs-edit-cancel-${secId}">Cancel</button>
+    </div>
+  `;
+  panel.classList.remove("hidden");
+
+  document.getElementById(`qs-edit-save-${secId}`).addEventListener("click", () => _saveQsEdit(secId));
+  document.getElementById(`qs-edit-cancel-${secId}`).addEventListener("click", () => panel.classList.add("hidden"));
+}
+
+async function _saveQsEdit(secId) {
+  const sec = _qsLocalSections.find(s => s.id === secId);
+  if (!sec) return;
+
+  const heading = document.getElementById(`qs-edit-heading-${secId}`)?.value.trim();
+  const rawContent = document.getElementById(`qs-edit-content-${secId}`)?.value || "";
+
+  let content;
+  if (sec.content_type === "table") {
+    // Each line should be a JSON object
+    content = rawContent.split("\n").filter(l => l.trim()).map(l => {
+      try { return JSON.parse(l); } catch { return { text: l.trim() }; }
+    });
+  } else {
+    content = rawContent.split("\n").map(l => l.trim()).filter(l => l);
+  }
+
+  try {
+    const r = await api(`/api/bhc/admin/quotation-sections/${secId}`, {
+      method: "PUT",
+      body: JSON.stringify({ heading, content }),
+    });
+    const data = await r.json();
+    const idx = _qsLocalSections.findIndex(s => s.id === secId);
+    if (idx >= 0) _qsLocalSections[idx] = data.section;
+    _renderQSItems();
+    toast("Section updated", "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function _onQsDelete(secId) {
+  if (!confirm("Delete this custom section? This cannot be undone.")) return;
+  try {
+    await api(`/api/bhc/admin/quotation-sections/${secId}`, { method: "DELETE" });
+    _qsLocalSections = _qsLocalSections.filter(s => s.id !== secId);
+    _renderQSItems();
+    toast("Section deleted", "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+/* ── Add Section Modal — interactive builder ── */
+let _qsActiveType = "list";
+
+function _openQsAddModal() {
+  const modal = el.qsAddModal();
+  // Reset fields
+  el.qsNewHeading().value = "";
+  _qsActiveType = "list";
+  _qsSetActiveType("list");
+  _qsResetBuilders();
+  _qsAddBuilderItem("list");  // start with one empty item
+
+  // Populate "Insert After" dropdown
+  const sel = el.qsInsertAfter();
+  sel.innerHTML = '<option value="end">— End of quotation (last section) —</option>';
+  _qsLocalSections.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = s.heading;
+    sel.appendChild(opt);
+  });
+
+  modal.classList.remove("hidden");
+  setTimeout(() => el.qsNewHeading().focus(), 100);
+}
+
+function _qsCloseModal() {
+  el.qsAddModal().classList.add("hidden");
+}
+
+function _qsSetActiveType(type) {
+  _qsActiveType = type;
+  document.querySelectorAll(".qs-type-card").forEach(card => {
+    const isMatch = card.dataset.typeValue === type;
+    card.classList.toggle("qs-type-card--active", isMatch);
+    card.querySelector("input[type=radio]").checked = isMatch;
+  });
+  // Show matching builder, hide others
+  document.getElementById("qs-builder-list").classList.toggle("hidden", type !== "list");
+  document.getElementById("qs-builder-paragraph").classList.toggle("hidden", type !== "paragraph");
+  document.getElementById("qs-builder-table").classList.toggle("hidden", type !== "table");
+  // If switching to a builder that's empty, add one starter item
+  const containerId = type === "list" ? "qs-list-items" : type === "paragraph" ? "qs-para-items" : "qs-table-rows";
+  if (!document.getElementById(containerId).children.length) {
+    _qsAddBuilderItem(type);
+  }
+}
+
+function _qsResetBuilders() {
+  document.getElementById("qs-list-items").innerHTML = "";
+  document.getElementById("qs-para-items").innerHTML = "";
+  document.getElementById("qs-table-rows").innerHTML = "";
+}
+
+function _qsAddBuilderItem(type, value, value2) {
+  if (type === "list") {
+    const container = document.getElementById("qs-list-items");
+    const idx = container.children.length + 1;
+    const div = document.createElement("div");
+    div.className = "qs-builder-item";
+    div.innerHTML = `
+      <span class="qs-builder-item-num">${idx}</span>
+      <input type="text" placeholder="Enter list item..." value="${escHtml(value || "")}" />
+      <button type="button" class="qs-builder-remove" title="Remove">&times;</button>`;
+    div.querySelector(".qs-builder-remove").addEventListener("click", () => { div.remove(); _qsRenumberItems(); });
+    container.appendChild(div);
+    if (!value) div.querySelector("input").focus();
+  } else if (type === "paragraph") {
+    const container = document.getElementById("qs-para-items");
+    const div = document.createElement("div");
+    div.className = "qs-builder-item";
+    div.innerHTML = `
+      <textarea placeholder="Enter paragraph text...">${escHtml(value || "")}</textarea>
+      <button type="button" class="qs-builder-remove" title="Remove">&times;</button>`;
+    div.querySelector(".qs-builder-remove").addEventListener("click", () => div.remove());
+    container.appendChild(div);
+    if (!value) div.querySelector("textarea").focus();
+  } else if (type === "table") {
+    const container = document.getElementById("qs-table-rows");
+    const div = document.createElement("div");
+    div.className = "qs-builder-item qs-table-row";
+    div.innerHTML = `
+      <input type="text" style="flex:2" placeholder="Task / Activity" value="${escHtml(value || "")}" />
+      <input type="text" style="flex:1" placeholder="Duration" value="${escHtml(value2 || "")}" />
+      <button type="button" class="qs-builder-remove" title="Remove">&times;</button>`;
+    div.querySelector(".qs-builder-remove").addEventListener("click", () => div.remove());
+    container.appendChild(div);
+    if (!value) div.querySelector("input").focus();
+  }
+}
+
+function _qsRenumberItems() {
+  document.querySelectorAll("#qs-list-items .qs-builder-item").forEach((item, i) => {
+    const num = item.querySelector(".qs-builder-item-num");
+    if (num) num.textContent = i + 1;
+  });
+}
+
+function _qsCollectContent() {
+  if (_qsActiveType === "list") {
+    return Array.from(document.querySelectorAll("#qs-list-items .qs-builder-item input"))
+      .map(inp => inp.value.trim()).filter(v => v);
+  } else if (_qsActiveType === "paragraph") {
+    return Array.from(document.querySelectorAll("#qs-para-items .qs-builder-item textarea"))
+      .map(ta => ta.value.trim()).filter(v => v);
+  } else if (_qsActiveType === "table") {
+    const rows = [];
+    document.querySelectorAll("#qs-table-rows .qs-table-row").forEach(row => {
+      const inputs = row.querySelectorAll("input");
+      const task = inputs[0]?.value.trim();
+      const dur = inputs[1]?.value.trim();
+      if (task) rows.push({ task, duration: dur || "" });
+    });
+    return rows;
+  }
+  return [];
+}
+
+async function _onQsAddConfirm() {
+  const heading = el.qsNewHeading().value.trim();
+  if (!heading) { toast("Section heading is required", "error"); el.qsNewHeading().focus(); return; }
+
+  const content = _qsCollectContent();
+  if (!content.length) { toast("Please add at least one content item", "error"); return; }
+
+  const btn = el.btnQsAddConfirm();
+  btn.disabled = true; btn.textContent = "Adding...";
+
+  try {
+    const r = await api("/api/bhc/admin/quotation-sections", {
+      method: "POST",
+      body: JSON.stringify({ heading, content_type: _qsActiveType, content }),
+    });
+    const data = await r.json();
+
+    // Insert at chosen position
+    const insertAfterVal = el.qsInsertAfter().value;
+    if (insertAfterVal === "end") {
+      _qsLocalSections.push(data.section);
+    } else {
+      const afterIdx = _qsLocalSections.findIndex(s => s.id === Number(insertAfterVal));
+      if (afterIdx >= 0) {
+        _qsLocalSections.splice(afterIdx + 1, 0, data.section);
+      } else {
+        _qsLocalSections.push(data.section);
+      }
+      // Auto-save reorder so position persists
+      const orderedIds = _qsLocalSections.map(s => s.id);
+      await api("/api/bhc/admin/quotation-sections/reorder", {
+        method: "PUT",
+        body: JSON.stringify({ ordered_ids: orderedIds }),
+      });
+    }
+
+    _renderQSItems();
+    _qsCloseModal();
+    toast("Section added successfully!", "success");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Add Section";
+  }
+}
+
+async function onSaveQSections() {
+  // Save reorder (the main save action)
+  try {
+    setAdminFeedback("Saving section order...", "info");
+    const orderedIds = _qsLocalSections.map(s => s.id);
+    const r = await api("/api/bhc/admin/quotation-sections/reorder", {
+      method: "PUT",
+      body: JSON.stringify({ ordered_ids: orderedIds }),
+    });
+    const data = await r.json();
+    state.adminConfig.quotation_sections = data.quotation_sections;
+    renderQSSectionsList();
+    setAdminFeedback("Section order saved.", "success");
+    toast("Sections saved", "success");
+    lockAdminSection("qsections");
   } catch (err) {
     setAdminFeedback(err.message, "error");
     toast(err.message, "error");
@@ -1769,7 +2246,7 @@ function lockAdminSection(section) {
   if (editBtn) editBtn.classList.remove("hidden");
   if (cancelBtn) cancelBtn.classList.add("hidden");
   // Hide save/action buttons
-  card.querySelectorAll(".btn-primary, #btn-add-pricing-row, #btn-add-new-building-pricing-row").forEach(btn => btn.classList.add("hidden"));
+  card.querySelectorAll(".btn-primary, #btn-add-pricing-row, #btn-add-new-building-pricing-row, #btn-add-qs").forEach(btn => btn.classList.add("hidden"));
   // Hide delete buttons inside pricing table
   card.querySelectorAll("[data-delete-pricing-index], [data-delete-nbpricing-index]").forEach(btn => btn.classList.add("hidden"));
 }
@@ -1787,7 +2264,7 @@ function unlockAdminSection(section) {
   if (editBtn) editBtn.classList.add("hidden");
   if (cancelBtn) cancelBtn.classList.remove("hidden");
   // Show save/action buttons
-  card.querySelectorAll(".btn-primary, #btn-add-pricing-row, #btn-add-new-building-pricing-row").forEach(btn => btn.classList.remove("hidden"));
+  card.querySelectorAll(".btn-primary, #btn-add-pricing-row, #btn-add-new-building-pricing-row, #btn-add-qs").forEach(btn => btn.classList.remove("hidden"));
   // Show delete buttons inside pricing table
   card.querySelectorAll("[data-delete-pricing-index], [data-delete-nbpricing-index]").forEach(btn => btn.classList.remove("hidden"));
 }
@@ -1918,6 +2395,24 @@ async function init() {
   el.btnAddNewBuildingPricingRow().addEventListener("click", onAddNewBuildingPricingRow);
   el.btnCreateUser().addEventListener("click", onCreateUser);
   el.btnSaveScope().addEventListener("click", onSaveScope);
+  el.btnSaveQSections().addEventListener("click", onSaveQSections);
+  el.btnAddQs().addEventListener("click", _openQsAddModal);
+  el.btnQsAddConfirm().addEventListener("click", _onQsAddConfirm);
+  el.btnQsAddCancel().addEventListener("click", _qsCloseModal);
+  // Modal overlay & close button
+  document.querySelectorAll("[data-qs-modal-close]").forEach(el => el.addEventListener("click", _qsCloseModal));
+  // Close modal on overlay background click (not card)
+  el.qsAddModal().addEventListener("click", (e) => { if (e.target === el.qsAddModal()) _qsCloseModal(); });
+  // Content type card selection
+  document.querySelectorAll(".qs-type-card").forEach(card => {
+    card.addEventListener("click", () => _qsSetActiveType(card.dataset.typeValue));
+  });
+  // Builder add-item buttons
+  document.getElementById("btn-qs-add-item").addEventListener("click", () => _qsAddBuilderItem("list"));
+  document.getElementById("btn-qs-add-para").addEventListener("click", () => _qsAddBuilderItem("paragraph"));
+  document.getElementById("btn-qs-add-row").addEventListener("click", () => _qsAddBuilderItem("table"));
+  el.btnLoadAudit().addEventListener("click", loadAuditLogs);
+  el.auditFilterType().addEventListener("change", renderAuditLogs);
   document.addEventListener("visibilitychange", onVisibilityChange);
   window.addEventListener("focus", onWindowFocus);
 
@@ -2311,6 +2806,46 @@ async function onDownload(format) {
 
 /** Download final PDF with signature inserted. */
 async function onInsertSignatureAndDownload() {
+  // Check if user has uploaded a signature; if not, prompt them
+  if (!state.session?.has_signature) {
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".png,.jpg,.jpeg";
+    fileInput.style.display = "none";
+    document.body.appendChild(fileInput);
+
+    const file = await new Promise((resolve) => {
+      fileInput.addEventListener("change", () => resolve(fileInput.files?.[0] || null));
+      fileInput.addEventListener("cancel", () => resolve(null));
+      fileInput.click();
+    });
+    fileInput.remove();
+
+    if (!file) {
+      toast("Signature is required to download the final PDF.", "error");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadR = await fetch("/api/bhc/user/signature", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (!uploadR.ok) {
+        const d = await uploadR.json().catch(() => ({}));
+        throw new Error(d.detail || "Signature upload failed");
+      }
+      state.session.has_signature = true;
+      toast("Signature uploaded successfully.", "success");
+    } catch (err) {
+      toast(err.message, "error");
+      return;
+    }
+  }
+
   const feedback = el.previewFeedback();
   feedback.classList.add("hidden");
 

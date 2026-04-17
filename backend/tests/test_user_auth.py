@@ -17,20 +17,19 @@ from backend.app.services.bhc_config_db import (
 def test_bootstrap_admin_account_uses_fixed_email(tmp_path, monkeypatch):
     db_path = Path(tmp_path) / "bhc_config.db"
     monkeypatch.setenv("BHC_CONFIG_DB_PATH", str(db_path))
-    monkeypatch.setenv("BHC_ADMIN_PASSWORD", "Bootstrap123")
 
     init_config_db(db_path)
 
-    admin_user = authenticate_user_credentials(DEFAULT_ADMIN_EMAIL, "Bootstrap123")
+    admin_user = authenticate_user_credentials(DEFAULT_ADMIN_EMAIL, "ChangeThisAdmin123")
 
     assert admin_user["email"] == DEFAULT_ADMIN_EMAIL.lower()
     assert admin_user["is_admin"] is True
+    assert admin_user["must_change_password"] is True
 
 
 def test_user_create_session_change_and_reset_password(tmp_path, monkeypatch):
     db_path = Path(tmp_path) / "bhc_config.db"
     monkeypatch.setenv("BHC_CONFIG_DB_PATH", str(db_path))
-    monkeypatch.setenv("BHC_ADMIN_PASSWORD", "Bootstrap123")
     init_config_db(db_path)
 
     user = create_user_account(

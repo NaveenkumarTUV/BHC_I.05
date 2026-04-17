@@ -51,27 +51,16 @@ def set_env_value(key: str, value: str) -> None:
     os.environ[key] = value
 
 
-SERVER_HOST = get_env("SERVER_HOST", "127.0.0.1")
-SERVER_PORT = get_int_env("SERVER_PORT", 7860)
-DEBUG_MODE = get_bool_env("DEBUG_MODE", False)
-
 DATA_DIR_PATH = get_env("DATA_DIR_PATH", "")
 EXCEL_FILE_PATH = get_env("EXCEL_FILE_PATH", "")
 BHC_PROCESSED_DB_PATH = get_env("BHC_PROCESSED_DB_PATH", "")
 BHC_CONFIG_DB_PATH = get_env("BHC_CONFIG_DB_PATH", "")
-BHC_ADMIN_PASSWORD = get_env("BHC_ADMIN_PASSWORD", "")
-ALLOWED_ORIGINS = [o.strip() for o in get_env("ALLOWED_ORIGINS", f"http://127.0.0.1:{SERVER_PORT},http://localhost:{SERVER_PORT}").split(",") if o.strip()]
+ALLOWED_ORIGINS = [o.strip() for o in get_env("ALLOWED_ORIGINS", "http://127.0.0.1:7860,http://localhost:7860").split(",") if o.strip()]
 
 
 def validate_runtime_config() -> None:
     """Validate runtime settings early so misconfiguration fails fast."""
     errors: list[str] = []
-
-    if not (1 <= SERVER_PORT <= 65535):
-        errors.append("SERVER_PORT must be between 1 and 65535.")
-
-    if SERVER_HOST.strip() == "":
-        errors.append("SERVER_HOST cannot be empty.")
 
     for env_name, env_value in (
         ("BHC_PROCESSED_DB_PATH", BHC_PROCESSED_DB_PATH),

@@ -53,6 +53,11 @@ from backend.app.services.bhc_config_db import (
     replace_scope_of_work_items,
     list_support_document_items,
     replace_support_document_items,
+    list_quotation_sections,
+    create_quotation_section,
+    update_quotation_section,
+    delete_quotation_section,
+    reorder_quotation_sections,
     SLAB_CATEGORY_STANDARD,
     SLAB_CATEGORY_NEW_BUILDING,
 )
@@ -232,6 +237,23 @@ class SupportDocumentsRequest(BaseModel):
     new_both: list[str] = []
 
 
+class QuotationSectionCreateRequest(BaseModel):
+    heading: str
+    content_type: str = "list"
+    content: list = []
+
+
+class QuotationSectionUpdateRequest(BaseModel):
+    heading: Optional[str] = None
+    content: Optional[list] = None
+    is_visible: Optional[bool] = None
+    content_type: Optional[str] = None
+
+
+class QuotationSectionReorderRequest(BaseModel):
+    ordered_ids: list[int]
+
+
 def ensure_authenticated(request: Request) -> dict[str, Any]:
     """Return authenticated user payload or raise HTTP 401."""
     return require_authenticated_user(request)
@@ -361,7 +383,7 @@ async def upload_excel(request: Request, file: UploadFile = File(...)):
     ensure_dir(DATA_DIR)
     content = await file.read()
     LOCAL_ENQUIRY_EXCEL_PATH.write_bytes(content)
-    return {"message": "Excel file uploaded successfully.", "rows": len(read_workflow_clients())}
+    return {"message": "Excel file uploaded successfully.", "rows": len(read_workflow_clients(force_refresh=True))}
 
 
 @router.get("/clients/pending")
@@ -876,6 +898,85 @@ async def admin_update_support_docs(body: SupportDocumentsRequest, request: Requ
             severity="INFO",
         )
         return {"support_documents": result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ── Quotation Sections Admin Endpoints ───────────────────────────────────
+
+@router.get("/admin/quotation-sections")
+async def admin_get_quotation_sections(request: Request):
+    ensure_authenticated(request)
+    return {"quotation_sections": list_quotation_sections()}
+
+
+@router.post("/admin/quotation-sections")
+async def admin_create_quotation_section(body: QuotationSectionCreateRequest, request: Request):
+    admin_user = ensure_admin(request)
+    try:
+        section = create_quotation_section(
+            heading=body.heading,
+            content_type=body.content_type,
+            content=body.content,
+        )
+        log_security_audit_event(
+            event_type="ADMIN_QS_CREATED",
+            actor_email=admin_user.get("email", ""),
+            target=section["section_key"],
+            severity="INFO",
+        )
+        return {"section": section}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/admin/quotation-sections/reorder")
+async def admin_reorder_quotation_sections(body: QuotationSectionReorderRequest, request: Request):
+    admin_user = ensure_admin(request)
+    sections = reorder_quotation_sections(body.ordered_ids)
+    log_security_audit_event(
+        event_type="ADMIN_QS_REORDERED",
+        actor_email=admin_user.get("email", ""),
+        target="quotation_sections",
+        severity="INFO",
+    )
+    return {"quotation_sections": sections}
+
+
+@router.put("/admin/quotation-sections/{section_id}")
+async def admin_update_quotation_section(section_id: int, body: QuotationSectionUpdateRequest, request: Request):
+    admin_user = ensure_admin(request)
+    try:
+        section = update_quotation_section(
+            section_id=section_id,
+            heading=body.heading,
+            content=body.content,
+            is_visible=body.is_visible,
+            content_type=body.content_type,
+        )
+        log_security_audit_event(
+            event_type="ADMIN_QS_UPDATED",
+            actor_email=admin_user.get("email", ""),
+            target=section["section_key"],
+            severity="INFO",
+        )
+        return {"section": section}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/admin/quotation-sections/{section_id}")
+async def admin_delete_quotation_section(section_id: int, request: Request):
+    admin_user = ensure_admin(request)
+    try:
+        delete_quotation_section(section_id)
+        log_security_audit_event(
+            event_type="ADMIN_QS_DELETED",
+            actor_email=admin_user.get("email", ""),
+            target=str(section_id),
+            severity="WARN",
+        )
+        return {"deleted": True}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

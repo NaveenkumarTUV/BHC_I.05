@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.app.config import ALLOWED_ORIGINS, DEBUG_MODE, SERVER_HOST, SERVER_PORT, validate_runtime_config
+from backend.app.config import ALLOWED_ORIGINS, validate_runtime_config
 from backend.app.routes.bhc_routes import router as bhc_router
 from backend.app.services.bhc_admin_auth import get_current_user
 from backend.app.services.bhc_config_db import ALLOWED_EMAIL_DOMAIN, DEFAULT_ADMIN_EMAIL, init_config_db
@@ -35,7 +35,7 @@ def create_app() -> FastAPI:
         ensure_dir(EXPORTS_DIR / "bhc")
         initialize_workflow_storage()
         init_config_db()
-        LOGGER.info("Startup completed. host=%s port=%s debug=%s", SERVER_HOST, SERVER_PORT, DEBUG_MODE)
+        LOGGER.info("Startup completed.")
 
     @app.middleware("http")
     async def request_context_middleware(request: Request, call_next):
@@ -137,8 +137,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "backend.app.main:app",
-        host=SERVER_HOST,
-        port=SERVER_PORT,
-        reload=DEBUG_MODE,
+        host="127.0.0.1",
+        port=7860,
         log_level="info",
     )

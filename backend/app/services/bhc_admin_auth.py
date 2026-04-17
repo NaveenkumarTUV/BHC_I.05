@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request, Response
 
-from backend.app.config import DEBUG_MODE
 from backend.app.services.bhc_config_db import (
     create_user_session,
     delete_user_session,
@@ -46,7 +45,7 @@ def set_auth_cookie(response: Response, email: str) -> None:
         value=session_token,
         httponly=True,
         samesite="lax",
-        secure=not DEBUG_MODE,
+        secure=False,
         max_age=AUTH_MAX_AGE_SECONDS,
         path="/",
     )

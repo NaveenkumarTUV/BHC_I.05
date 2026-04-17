@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -30,6 +31,11 @@ DEFAULT_ENQUIRY_EXCEL_FILENAMES = (
 LOCAL_ENQUIRY_EXCEL_PATH = DATA_DIR / "bhc_enquiries.xlsx"
 PROCESSED_DB_PATH = Path(BHC_PROCESSED_DB_PATH) if BHC_PROCESSED_DB_PATH else (DATA_DIR / "bhc_processed.db")
 BHC_EXPORT_DIR = EXPORTS_DIR / "bhc"
+
+# Cache for network drive Excel candidates to avoid slow I/O on every request
+_excel_candidates_cache: dict[str, Any] = {"candidates": None, "timestamp": 0.0}
+_excel_data_cache: dict[str, Any] = {"clients": None, "timestamp": 0.0}
+_CACHE_TTL_SECONDS = 120  # re-scan every 2 minutes
 
 ALLOWED_PAYMENTS_BY_STATUS = {
     "quoted": {"pending"},
@@ -67,7 +73,22 @@ def _default_excel_candidates() -> list[Path]:
     configured_excel_path = os.environ.get("EXCEL_FILE_PATH", EXCEL_FILE_PATH).strip()
 
     if configured_excel_path:
-        candidates.append(Path(configured_excel_path))
+        configured = Path(configured_excel_path)
+        if configured.is_dir():
+            # If configured path is a directory, scan it for known filenames first
+            for filename in DEFAULT_ENQUIRY_EXCEL_FILENAMES:
+                candidate = configured / filename
+                if candidate not in candidates:
+                    candidates.append(candidate)
+            # Then add any other .xlsx files in the directory
+            if configured.exists():
+                for xlsx_file in sorted(configured.glob("*.xlsx")):
+                    if xlsx_file not in candidates:
+                        candidates.append(xlsx_file)
+        else:
+            candidates.append(configured)
+        # When an explicit path is configured, do not fall back to OneDrive or local
+        return candidates
 
     for root in _one_drive_roots():
         for filename in DEFAULT_ENQUIRY_EXCEL_FILENAMES:
@@ -88,20 +109,26 @@ def _default_excel_candidates() -> list[Path]:
 
 
 def get_active_excel_path_or_none() -> Optional[Path]:
-    """Return the first available enquiry workbook candidate."""
+    """Return the first available enquiry workbook candidate (cached)."""
+    now = time.monotonic()
+    cache = _excel_candidates_cache
+    if cache["candidates"] is not None and (now - cache["timestamp"]) < _CACHE_TTL_SECONDS:
+        return cache["candidates"][0] if cache["candidates"] else None
+
+    result: list[Path] = []
     for candidate in _default_excel_candidates():
         if candidate.exists():
-            return candidate
-    return None
+            result.append(candidate)
+    cache["candidates"] = result
+    cache["timestamp"] = now
+    return result[0] if result else None
 
 
 def get_excel_read_candidates() -> list[Path]:
-    """Return existing Excel sources in priority order for resilient reads."""
-    candidates: list[Path] = []
-    for candidate in _default_excel_candidates():
-        if candidate.exists() and candidate not in candidates:
-            candidates.append(candidate)
-    return candidates
+    """Return existing Excel sources in priority order (cached)."""
+    # Trigger cache population
+    get_active_excel_path_or_none()
+    return list(_excel_candidates_cache.get("candidates") or [])
 
 
 def digits(phone: str) -> str:
@@ -135,8 +162,13 @@ def legacy_phone_enquiry_key(client: dict[str, Any]) -> str:
     return ""
 
 
-def read_workflow_clients() -> list[dict[str, Any]]:
-    """Read and normalize enquiry rows consumed by API endpoints."""
+def read_workflow_clients(*, force_refresh: bool = False) -> list[dict[str, Any]]:
+    """Read and normalize enquiry rows consumed by API endpoints (cached)."""
+    now = time.monotonic()
+    cache = _excel_data_cache
+    if not force_refresh and cache["clients"] is not None and (now - cache["timestamp"]) < _CACHE_TTL_SECONDS:
+        return cache["clients"]
+
     candidates = get_excel_read_candidates()
     if not candidates:
         raise HTTPException(
@@ -172,6 +204,7 @@ def read_workflow_clients() -> list[dict[str, Any]]:
             {
                 "name": client.get("Client_Name", ""),
                 "phone": client.get("Phone_Number", ""),
+                "email": client.get("Client_Email", ""),
                 "location": client.get("Location", ""),
                 "property_type": client.get("Property_Type", ""),
                 "building_system": client.get("Building_System", ""),
@@ -180,11 +213,15 @@ def read_workflow_clients() -> list[dict[str, Any]]:
                 "issue_observed": client.get("Issue_Observed", ""),
                 "building_age": client.get("Building_Age", ""),
                 "urgency": client.get("Urgency", ""),
+                "gst_number": client.get("GST_Number", ""),
+                "pan_number": client.get("PAN_Number", ""),
                 "notes": client.get("Notes", ""),
                 "timestamp": client.get("Timestamp", ""),
                 "enquiry_key": client_enquiry_key(client, row_index),
             }
         )
+    cache["clients"] = clients
+    cache["timestamp"] = time.monotonic()
     return clients
 
 

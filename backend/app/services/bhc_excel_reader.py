@@ -1,10 +1,11 @@
 """
 bhc_excel_reader.py
 -------------------
-Reads Google Form response Excel file and returns structured client data.
+Reads Microsoft Form response Excel file and returns structured client data.
 Columns expected:
-    Client_Name, Phone_Number, Location, Property_Type, Building_System,
-    Area_sqft, Issue_Observed, Building_Age, Notes
+    Client_Name, Phone_Number, Client_Email, Location, Property_Type,
+    Building_System, Area_sqft, Issue_Observed, Building_Age, Urgency,
+    GST_Number, PAN_Number, Notes
 """
 
 import pandas as pd
@@ -16,6 +17,7 @@ EXPECTED_COLUMNS = [
     "Timestamp",
     "Client_Name",
     "Phone_Number",
+    "Client_Email",
     "Location",
     "Property_Type",
     "Building_System",
@@ -23,6 +25,8 @@ EXPECTED_COLUMNS = [
     "Issue_Observed",
     "Building_Age",
     "Urgency",
+    "GST_Number",
+    "PAN_Number",
     "Notes",
 ]
 
@@ -69,7 +73,7 @@ def _infer_building_system_from_record(record: Dict[str, Any]) -> str:
 
     return ""
 
-# Column aliases – maps alternative names from real Google Form exports to canonical names
+# Column aliases – maps alternative names from real Microsoft Form exports to canonical names
 COLUMN_ALIASES: Dict[str, str] = {
     "timestamp":         "Timestamp",
     "submitted at":      "Timestamp",
@@ -87,10 +91,15 @@ COLUMN_ALIASES: Dict[str, str] = {
     "mobile number":     "Phone_Number",
     "contact":           "Phone_Number",
     "contact number":    "Phone_Number",
+    "email":             "Client_Email",
+    "email1":            "Client_Email",
+    "email address":     "Client_Email",
+    "client email":      "Client_Email",
     "address":           "Location",
     "city":              "Location",
     "location (city / site address)": "Location",
-    "complete adress":  "Location",
+    "complete adress":   "Location",
+    "complete address":  "Location",
     "property type":     "Property_Type",
     "type":              "Property_Type",
     "building system":   "Building_System",
@@ -124,10 +133,23 @@ COLUMN_ALIASES: Dict[str, str] = {
     "urgency":           "Urgency",
     "when do you need this": "Urgency",
     "when do you need this?": "Urgency",
+    "when do u need this inspection?": "Urgency",
+    "when do u need this inspection": "Urgency",
     "timeline":          "Urgency",
     "when needed":       "Urgency",
     "priority":          "Urgency",
     "service urgency":   "Urgency",
+    "do you have gst number?": "GST_Number",
+    "enter gst number":  "GST_Number",
+    "gst number":        "GST_Number",
+    "gst":               "GST_Number",
+    "gst no":            "GST_Number",
+    "gstin":             "GST_Number",
+    "do you have pan number?": "PAN_Number",
+    "enter pan number":  "PAN_Number",
+    "pan number":        "PAN_Number",
+    "pan":               "PAN_Number",
+    "pan no":            "PAN_Number",
 }
 
 

@@ -808,6 +808,179 @@
           </div>
         </section>
 
+        <!-- Quotation Sections Manager -->
+        <section class="admin-card admin-card--purple admin-locked" data-admin-section="qsections">
+          <div class="admin-card-head">
+            <div class="admin-card-icon admin-card-icon--purple">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            </div>
+            <div class="admin-card-meta">
+              <h3>Quotation Sections</h3>
+              <p>Manage, reorder, show/hide, and add custom sections to the generated quotation PDF</p>
+            </div>
+            <div class="admin-card-actions">
+              <button class="btn btn-outline btn-admin-edit admin-only" data-edit-section="qsections">Edit</button>
+              <button class="btn btn-outline btn-admin-cancel hidden" data-cancel-section="qsections">Cancel</button>
+              <button id="btn-save-qsections" class="btn btn-primary hidden">Save Sections</button>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            <div id="qs-list" class="qs-section-list"></div>
+            <div class="qs-add-row" style="margin-top:12px;">
+              <button id="btn-add-qs" class="btn btn-primary" style="width:100%;">+ Add New Section</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Add Section Modal — uses app's native modal-overlay / modal-card pattern -->
+        <div id="qs-add-modal" class="modal-overlay hidden">
+          <div class="modal-card qs-add-card">
+            <!-- Header -->
+            <div class="qs-add-header">
+              <div class="admin-card-icon admin-card-icon--purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </div>
+              <div>
+                <div class="modal-title" style="text-align:left">Add New Section</div>
+                <p style="margin:0;font-size:12px;color:var(--slate-500);text-align:left">Create a custom section for the quotation PDF</p>
+              </div>
+              <button class="qs-add-close" data-qs-modal-close>&times;</button>
+            </div>
+
+            <!-- Form -->
+            <div class="qs-add-form">
+              <!-- Heading -->
+              <div class="qs-add-field">
+                <label class="qs-add-label">Section Heading <span style="color:#dc2626">*</span></label>
+                <input id="qs-new-heading" class="search-input" placeholder="e.g. Special Conditions, Safety Requirements, Insurance..." />
+                <span class="qs-add-hint">This will appear as the section title in the quotation PDF</span>
+              </div>
+
+              <!-- Content Type -->
+              <div class="qs-add-field">
+                <label class="qs-add-label">Content Type</label>
+                <div class="qs-type-cards">
+                  <div class="qs-type-card qs-type-card--active" data-type-value="list">
+                    <input type="radio" name="qs-new-type" value="list" checked hidden />
+                    <div class="qs-type-icon-wrap">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+                    </div>
+                    <strong>Numbered List</strong>
+                    <span>Items as 1, 2, 3...</span>
+                  </div>
+                  <div class="qs-type-card" data-type-value="paragraph">
+                    <input type="radio" name="qs-new-type" value="paragraph" hidden />
+                    <div class="qs-type-icon-wrap">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="14" x2="15" y2="14"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+                    </div>
+                    <strong>Paragraphs</strong>
+                    <span>Free-form text</span>
+                  </div>
+                  <div class="qs-type-card" data-type-value="table">
+                    <input type="radio" name="qs-new-type" value="table" hidden />
+                    <div class="qs-type-icon-wrap">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+                    </div>
+                    <strong>Table</strong>
+                    <span>Task &amp; duration</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Content Builder -->
+              <div class="qs-add-field">
+                <label class="qs-add-label">Content</label>
+
+                <!-- List builder -->
+                <div id="qs-builder-list" class="qs-builder">
+                  <div id="qs-list-items" class="qs-builder-items"></div>
+                  <button type="button" id="btn-qs-add-item" class="btn btn-outline btn-sm" style="width:100%;margin-top:8px;border-style:dashed">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Add Item
+                  </button>
+                </div>
+
+                <!-- Paragraph builder -->
+                <div id="qs-builder-paragraph" class="qs-builder hidden">
+                  <div id="qs-para-items" class="qs-builder-items"></div>
+                  <button type="button" id="btn-qs-add-para" class="btn btn-outline btn-sm" style="width:100%;margin-top:8px;border-style:dashed">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Add Paragraph
+                  </button>
+                </div>
+
+                <!-- Table builder -->
+                <div id="qs-builder-table" class="qs-builder hidden">
+                  <div class="qs-tbl-header">
+                    <span style="flex:2">Task / Activity</span>
+                    <span style="flex:1">Duration</span>
+                    <span style="width:32px"></span>
+                  </div>
+                  <div id="qs-table-rows" class="qs-builder-items"></div>
+                  <button type="button" id="btn-qs-add-row" class="btn btn-outline btn-sm" style="width:100%;margin-top:8px;border-style:dashed">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Add Row
+                  </button>
+                </div>
+              </div>
+
+              <!-- Insert Position -->
+              <div class="qs-add-field">
+                <label class="qs-add-label">Insert After</label>
+                <select id="qs-insert-after" class="search-input">
+                  <option value="end">— End of quotation (last section) —</option>
+                </select>
+                <span class="qs-add-hint">Choose where this section will appear in the quotation order</span>
+              </div>
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="qs-add-actions">
+              <button id="btn-qs-add-cancel" class="btn btn-outline">Cancel</button>
+              <button id="btn-qs-add-confirm" class="btn btn-primary">Add Section</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audit Log -->
+        <section class="admin-card admin-card--emerald" data-admin-section="audit">
+          <div class="admin-card-head">
+            <div class="admin-card-icon admin-card-icon--emerald">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+            </div>
+            <div class="admin-card-meta">
+              <h3>Audit Log</h3>
+              <p>Security events, login activity, and admin actions — read-only</p>
+            </div>
+            <div class="admin-card-actions">
+              <button id="btn-load-audit" class="btn btn-outline">Load Logs</button>
+              <select id="audit-filter-type" class="search-input" style="max-width:160px;font-size:12px;">
+                <option value="important">Key Transactions</option>
+                <option value="all">All Events</option>
+              </select>
+            </div>
+          </div>
+          <div class="admin-card-body" style="opacity:1;pointer-events:auto;">
+            <div id="audit-log-empty" class="muted" style="text-align:center;padding:24px 0;">Click <strong>Load Logs</strong> to fetch audit events.</div>
+            <div id="audit-log-wrap" class="table-wrap admin-table-wrap hidden">
+              <table class="data-table audit-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>Severity</th>
+                    <th>Actor</th>
+                    <th>Target</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-log-body"></tbody>
+              </table>
+            </div>
+            <div id="audit-log-count" class="muted hidden" style="font-size:11px;margin-top:8px;text-align:right;"></div>
+          </div>
+        </section>
+
       </div>
       <div id="admin-feedback" class="feedback hidden"></div>
     </section>

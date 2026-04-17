@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from backend.app.config import BHC_ADMIN_PASSWORD, BHC_CONFIG_DB_PATH
+from backend.app.config import BHC_CONFIG_DB_PATH
 from backend.app.utils.paths import DATA_DIR
 
 ALLOWED_EMAIL_DOMAIN = "@ind.tuv.com"
@@ -17,7 +17,7 @@ DEFAULT_ADMIN_EMAIL = "M.naveenkumar@ind.tuv.com"
 DEFAULT_ADMIN_NAME = "M Naveenkumar"
 PASSWORD_HASH_ITERATIONS = 200000
 SESSION_DURATION_HOURS = 8
-CONFIG_SCHEMA_VERSION = "6"
+CONFIG_SCHEMA_VERSION = "7"
 
 SLAB_CATEGORY_STANDARD = "standard"
 SLAB_CATEGORY_NEW_BUILDING = "new_building"
@@ -43,9 +43,9 @@ DEFAULT_NEW_BUILDING_PRICING_SLABS: list[dict[str, float | int | str]] = [
 ]
 
 DEFAULT_COMPANY_SETTINGS: dict[str, str] = {
-    "company_name": "TUV Rheinland (India) Pvt.Ltd.",
+    "company_name": "TUV Rheinland (India) Private Limited",
     "company_subtitle": "Building Inspection & Civil Engineering Services",
-    "company_address": "TUV Rheinland (India) Pvt.Ltd., 17/B, Industrial Area, Electronic City II Phase, Bengaluru, Karnataka 560100",
+    "company_address": "TUV Rheinland (India) Private Limited, 17/B, Industrial Area, Electronic City II Phase, Bengaluru, Karnataka 560100",
     "company_phone": "+91 9108476522",
     "company_email": "Thulasi.Prasad@ind.tuv.com",
     "contact_name": "Thulasi Prasad",
@@ -89,6 +89,125 @@ DEFAULT_DOCUMENT_SETTINGS: dict[str, Any] = {
     ],
     "system_generated_note": "Note: This is a system-generated quotation and does not require a signature.",
 }
+
+# ── Default quotation sections (ordered, all configurable) ───────────────
+# content_type: "dynamic" = rendered by code, "list" = numbered bullet list,
+#               "paragraph" = multi-paragraph text, "table" = table rows (JSON)
+# is_system: True = cannot be deleted (only hidden), False = user-created
+DEFAULT_QUOTATION_SECTIONS: list[dict[str, Any]] = [
+    {
+        "section_key": "scope_of_work",
+        "heading": "Scope of Work",
+        "content_type": "dynamic",
+        "content_json": "[]",
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "notes_exclusions",
+        "heading": "Notes / Exclusions",
+        "content_type": "paragraph",
+        "content_json": '["Statutory / Regulatory inspections / COC certifications are not considered as part of scope. The inspection is limited to visual assessment only."]',
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "deliverables",
+        "heading": "Deliverables",
+        "content_type": "dynamic",
+        "content_json": "[]",
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "timeline",
+        "heading": "Proposed Timeline",
+        "content_type": "table",
+        "content_json": '[{"sr_no":"1","task":"Field Visit","duration":"1-2 days after all arrangements are made prior to field visit"},{"sr_no":"2","task":"Submission of Report","duration":"2-3 days after completing site testing"}]',
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "fees",
+        "heading": "Fees",
+        "content_type": "dynamic",
+        "content_json": "[]",
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "basis_of_fees",
+        "heading": "Basis of fees",
+        "content_type": "list",
+        "content_json": '["All fees above are inclusive of GST as applicable.","The above rates are applicable for Building Health Checkup / Inspection services.","Above fees are lump-sum inclusive of inspection, mobilization-demobilization and local transport considering 8 hours of working on a normal working day.","Additional hours will be charged at 1.5 times of normal man-day rates. For Saturdays, Sundays, Public Holidays and Night Shifts, charges shall be 1.5 times the normal man-day rates.","In the event a visit is cancelled within 24-48 hours prior to the scheduled visit or for any abortive visit not attributable to TUV-R, applicable man-day rates shall be charged.","At least 02-03 working days notification shall be provided to arrange inspection."]',
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "support_documents",
+        "heading": "Support Documents / Arrangements Required from Client",
+        "content_type": "dynamic",
+        "content_json": "[]",
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "methodology",
+        "heading": "Proposed Methodology",
+        "content_type": "list",
+        "content_json": '["TUV Rheinland (India) Private Limited will appoint a Project Coordinator, who shall be the single point of contact for the entire assignment for general coordination.","The client will provide an inspection call with a minimum of three (03) working days notice to our coordinator along with all required technical documentation.","Our coordinator shall arrange the inspection and confirm with the client regarding the visit details.","Our inspector will carry out the inspection as per the technical documentation provided by the client and submit observations to our coordinator.","Our coordinator shall review the report and then submit it to the client with necessary supporting documentation.","Reports shall be submitted within 24-48 working hours after completion of the inspection.","Our coordinator will raise the invoice after submission of reports.","The client shall ensure the Health and Safety of TUV Rheinland personnel while working at their facility by providing a safe working environment."]',
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "payment_terms",
+        "heading": "Payment Terms",
+        "content_type": "dynamic",
+        "content_json": "[]",
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "terms_conditions",
+        "heading": "Terms & Conditions",
+        "content_type": "paragraph",
+        "content_json": '["General terms and conditions of Business attached herewith, shall be an integral part. The Terms & Conditions contained in this Quotation shall supersede all other Contractual obligations entered between the Parties and shall be deemed as final and binding on the Parties. Both TUV-R and the Customer/Client shall sign out the Quotation as a confirmation of their Business Understanding and its acceptability to one another."]',
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "other_terms",
+        "heading": "Additional Terms",
+        "content_type": "dynamic",
+        "content_json": "[]",
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "validity",
+        "heading": "Validity",
+        "content_type": "paragraph",
+        "content_json": '["Our proposal is valid for 60 days from the date of submission. The rates shall be firm for 01 MONTH from the date of acceptance of proposal or signing the contract.","We trust you will find the above offer competitive and look forward to be associated with you. In case you need any further clarifications or discussions, please contact us. We will be pleased to furnish the same promptly. Our other General Terms and Conditions are attached herewith."]',
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "acknowledgement",
+        "heading": "Acknowledgement / Order Acceptance",
+        "content_type": "paragraph",
+        "content_json": '["The quotation is hereby acknowledged and accepted by the Client."]',
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "about_us",
+        "heading": "About Us",
+        "content_type": "dynamic",
+        "content_json": "[]",
+        "is_system": True,
+        "is_visible": True,
+    },
+]
 
 LIST_SETTING_KEYS = {
     "company_profile_paragraphs",
@@ -273,8 +392,13 @@ def _session_hash(token: str) -> str:
     return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
 
 
+# Default bootstrap password — used only for first-time admin creation.
+# Admin is forced to change it on first login (must_change_password=1).
+_DEFAULT_BOOTSTRAP_PASSWORD = "ChangeThisAdmin123"
+
+
 def _bootstrap_admin_password() -> str:
-    return os.environ.get("BHC_ADMIN_PASSWORD", BHC_ADMIN_PASSWORD).strip() or "ChangeThisAdmin123"
+    return _DEFAULT_BOOTSTRAP_PASSWORD
 
 
 def _sanitize_user_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -452,6 +576,24 @@ def init_config_db(db_path: Path | None = None) -> None:
             """
         )
 
+        # ── Quotation sections table (v7) ────────────────────────
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS quotation_sections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                section_key TEXT NOT NULL UNIQUE,
+                heading TEXT NOT NULL,
+                content_type TEXT NOT NULL DEFAULT 'list',
+                content_json TEXT NOT NULL DEFAULT '[]',
+                sort_order INTEGER NOT NULL,
+                is_visible INTEGER NOT NULL DEFAULT 1,
+                is_system INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
         existing_setting_keys = {
             row["key"]
             for row in conn.execute("SELECT key FROM app_settings").fetchall()
@@ -526,6 +668,27 @@ def init_config_db(db_path: Path | None = None) -> None:
                             "INSERT INTO support_document_items(scope_type, sort_order, item_text) VALUES (?, ?, ?)",
                             (scope_type, idx, text),
                         )
+
+        # Seed quotation sections (v7)
+        qs_count = conn.execute("SELECT COUNT(*) AS total FROM quotation_sections").fetchone()["total"]
+        if not qs_count:
+            now = _utcnow_iso()
+            for idx, sec in enumerate(DEFAULT_QUOTATION_SECTIONS, start=1):
+                conn.execute(
+                    "INSERT INTO quotation_sections(section_key, heading, content_type, content_json, sort_order, is_visible, is_system, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        sec["section_key"],
+                        sec["heading"],
+                        sec["content_type"],
+                        sec["content_json"],
+                        idx * 10,
+                        1 if sec["is_visible"] else 0,
+                        1 if sec["is_system"] else 0,
+                        now,
+                        now,
+                    ),
+                )
 
         # Add designation and signature_blob columns if missing (v5 upgrade)
         user_columns = [row[1] for row in conn.execute("PRAGMA table_info(user_accounts)").fetchall()]
@@ -635,7 +798,7 @@ def _ensure_admin_user(conn: sqlite3.Connection) -> None:
             INSERT INTO user_accounts (
                 email, full_name, password_hash, is_admin, is_active, must_change_password,
                 created_at, updated_at, created_by
-            ) VALUES (?, ?, ?, 1, 1, 0, ?, ?, 'system')
+            ) VALUES (?, ?, ?, 1, 1, 1, ?, ?, 'system')
             """,
             (
                 admin_email,
@@ -931,6 +1094,153 @@ def replace_support_document_items(scope_data: dict[str, list[str]]) -> dict[str
     return list_support_document_items()
 
 
+# ── Quotation Sections CRUD ──────────────────────────────────────────────
+
+def _row_to_section(row: sqlite3.Row) -> dict[str, Any]:
+    content_raw = str(row["content_json"] or "[]")
+    try:
+        content = json.loads(content_raw)
+    except json.JSONDecodeError:
+        content = []
+    return {
+        "id": int(row["id"]),
+        "section_key": str(row["section_key"]),
+        "heading": str(row["heading"]),
+        "content_type": str(row["content_type"]),
+        "content": content,
+        "sort_order": int(row["sort_order"]),
+        "is_visible": bool(row["is_visible"]),
+        "is_system": bool(row["is_system"]),
+    }
+
+
+def list_quotation_sections() -> list[dict[str, Any]]:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM quotation_sections ORDER BY sort_order ASC, id ASC"
+        ).fetchall()
+    return [_row_to_section(row) for row in rows]
+
+
+def get_quotation_section(section_id: int) -> dict[str, Any] | None:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM quotation_sections WHERE id = ?", (section_id,)
+        ).fetchone()
+    return _row_to_section(row) if row else None
+
+
+def create_quotation_section(
+    heading: str,
+    content_type: str = "list",
+    content: list | None = None,
+) -> dict[str, Any]:
+    heading = str(heading).strip()
+    if not heading:
+        raise ValueError("Heading is required.")
+    allowed_types = {"list", "paragraph", "table", "dynamic"}
+    if content_type not in allowed_types:
+        raise ValueError(f"Invalid content_type. Must be one of: {', '.join(sorted(allowed_types))}.")
+    content_json = json.dumps(content or [], ensure_ascii=True)
+    section_key = heading.lower().replace(" ", "_").replace("/", "_")[:50]
+    now = _utcnow_iso()
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        max_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM quotation_sections").fetchone()["mx"]
+        # Ensure unique section_key
+        existing = conn.execute("SELECT id FROM quotation_sections WHERE section_key = ?", (section_key,)).fetchone()
+        if existing:
+            section_key = f"{section_key}_{int(max_order) + 10}"
+        conn.execute(
+            "INSERT INTO quotation_sections(section_key, heading, content_type, content_json, sort_order, is_visible, is_system, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?)",
+            (section_key, heading, content_type, content_json, max_order + 10, now, now),
+        )
+        conn.commit()
+        new_row = conn.execute(
+            "SELECT * FROM quotation_sections WHERE section_key = ?", (section_key,)
+        ).fetchone()
+    return _row_to_section(new_row)
+
+
+def update_quotation_section(
+    section_id: int,
+    heading: str | None = None,
+    content: list | None = None,
+    is_visible: bool | None = None,
+    content_type: str | None = None,
+) -> dict[str, Any]:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        row = conn.execute("SELECT * FROM quotation_sections WHERE id = ?", (section_id,)).fetchone()
+        if not row:
+            raise ValueError(f"Section with id {section_id} not found.")
+        updates: list[str] = []
+        params: list[Any] = []
+        if heading is not None:
+            heading = str(heading).strip()
+            if not heading:
+                raise ValueError("Heading cannot be empty.")
+            updates.append("heading = ?")
+            params.append(heading)
+        if content is not None:
+            updates.append("content_json = ?")
+            params.append(json.dumps(content, ensure_ascii=True))
+        if is_visible is not None:
+            updates.append("is_visible = ?")
+            params.append(1 if is_visible else 0)
+        if content_type is not None:
+            allowed_types = {"list", "paragraph", "table", "dynamic"}
+            if content_type not in allowed_types:
+                raise ValueError(f"Invalid content_type. Must be one of: {', '.join(sorted(allowed_types))}.")
+            updates.append("content_type = ?")
+            params.append(content_type)
+        if updates:
+            updates.append("updated_at = ?")
+            params.append(_utcnow_iso())
+            params.append(section_id)
+            conn.execute(
+                f"UPDATE quotation_sections SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+            conn.commit()
+    return get_quotation_section(section_id)
+
+
+def delete_quotation_section(section_id: int) -> bool:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        row = conn.execute("SELECT is_system FROM quotation_sections WHERE id = ?", (section_id,)).fetchone()
+        if not row:
+            raise ValueError(f"Section with id {section_id} not found.")
+        if row["is_system"]:
+            raise ValueError("System sections cannot be deleted. You can hide them instead.")
+        conn.execute("DELETE FROM quotation_sections WHERE id = ?", (section_id,))
+        conn.commit()
+    return True
+
+
+def reorder_quotation_sections(ordered_ids: list[int]) -> list[dict[str, Any]]:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    now = _utcnow_iso()
+    with _connect(resolved_path) as conn:
+        for idx, section_id in enumerate(ordered_ids):
+            conn.execute(
+                "UPDATE quotation_sections SET sort_order = ?, updated_at = ? WHERE id = ?",
+                ((idx + 1) * 10, now, section_id),
+            )
+        conn.commit()
+    return list_quotation_sections()
+
+
 def get_admin_config() -> dict[str, Any]:
     return {
         "config_schema_version": get_config_schema_version(),
@@ -943,6 +1253,7 @@ def get_admin_config() -> dict[str, Any]:
         },
         "scope_of_work": list_scope_of_work_items(),
         "support_documents": list_support_document_items(),
+        "quotation_sections": list_quotation_sections(),
         "users": list_user_accounts(),
         "db_path": str(get_config_db_path()),
     }
@@ -1169,17 +1480,6 @@ def authenticate_user_credentials(email: str, password: str) -> dict[str, Any]:
 
         if _verify_password(password, str(row["password_hash"])):
             return _sanitize_user_row(row) or {}
-
-        if normalized_email == _normalize_email(DEFAULT_ADMIN_EMAIL):
-            bootstrap_password = _bootstrap_admin_password()
-            if password == bootstrap_password:
-                conn.execute(
-                    "UPDATE user_accounts SET password_hash = ?, must_change_password = 1, updated_at = ? WHERE email = ?",
-                    (_hash_password(bootstrap_password), _utcnow_iso(), normalized_email),
-                )
-                conn.commit()
-                refreshed = conn.execute("SELECT * FROM user_accounts WHERE email = ?", (normalized_email,)).fetchone()
-                return _sanitize_user_row(refreshed) or {}
 
     raise ValueError("Invalid email or password.")
 
