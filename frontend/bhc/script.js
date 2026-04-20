@@ -14,6 +14,12 @@ const state = {
   activeTab: "overview",
   isAutoRefreshing: false,
   autoRefreshTimer: null,
+  // DEQ module
+  deqRecords: [],
+  deqFiltered: [],
+  deqSync: {},
+  deqBhcClients: [],
+  deqSections: [],
 };
 
 const AUTO_REFRESH_MS = 15000;
@@ -57,6 +63,13 @@ const el = {
   regDesignation: () => document.getElementById("reg-designation"),
   regPassword: () => document.getElementById("reg-password"),
   regConfirmPassword: () => document.getElementById("reg-confirm-password"),
+  regPasswordPolicy: () => document.getElementById("reg-password-policy"),
+  regPolicyLength: () => document.getElementById("reg-policy-length"),
+  regPolicyUpper: () => document.getElementById("reg-policy-upper"),
+  regPolicyLower: () => document.getElementById("reg-policy-lower"),
+  regPolicyDigit: () => document.getElementById("reg-policy-digit"),
+  regPolicySpecial: () => document.getElementById("reg-policy-special"),
+  regPolicyMatch: () => document.getElementById("reg-policy-match"),
   regSecurityQuestion: () => document.getElementById("reg-security-question"),
   regSecurityAnswer: () => document.getElementById("reg-security-answer"),
   btnRegister: () => document.getElementById("btn-register"),
@@ -389,7 +402,7 @@ function bindKeyboardShortcuts() {
     // Ctrl+1-5 for tab switching
     if ((e.ctrlKey || e.metaKey) && ["1","2","3","4","5"].includes(e.key)) {
       e.preventDefault();
-      const tabs = ["overview", "enquiries", "studio", "pipeline", "admin"];
+      const tabs = ["overview", "enquiries", "studio", "pipeline", "deq", "admin"];
       const idx = parseInt(e.key) - 1;
       if (tabs[idx] && state.session?.authenticated) activateTab(tabs[idx]);
     }
@@ -439,7 +452,7 @@ async function checkSystemHealth() {
 function updateBreadcrumb(tab) {
   const bc = document.getElementById("breadcrumb");
   if (!bc) return;
-  const names = { overview: "Home", enquiries: "New Enquiries", studio: "Quote Studio", pipeline: "Pipeline", admin: "Admin" };
+  const names = { overview: "Home", enquiries: "New Enquiries", studio: "Quote Studio", pipeline: "BHC Pipeline", deq: "DEQ", admin: "Admin" };
   if (tab === "overview") {
     bc.innerHTML = "<span>Home</span>";
   } else {
@@ -831,6 +844,21 @@ function activateTab(tabName) {
 
   updateBreadcrumb(tabName);
   try { localStorage.setItem(TAB_STORAGE_KEY, tabName); } catch (_) {}
+
+  if (tabName === "deq" && state.session?.authenticated) {
+    const comingSoon = document.getElementById("deq-coming-soon");
+    const tabBody = document.getElementById("deq-tab-body");
+    if (comingSoon && tabBody) {
+      if (DEQ_ENABLED) {
+        comingSoon.classList.add("hidden");
+        tabBody.classList.remove("hidden");
+        loadDeqData();
+      } else {
+        comingSoon.classList.remove("hidden");
+        tabBody.classList.add("hidden");
+      }
+    }
+  }
 }
 
 function bindTabs() {
@@ -1070,11 +1098,11 @@ function _renderSlabTable(body, slabs, dataPrefix) {
   }
 
   body.innerHTML = slabs.map((slab, index) => `
-    <tr>
-      <td><input type="number" min="0" step="1" data-${dataPrefix}-field="min_area" data-${dataPrefix}-index="${index}" value="${Number(slab.min_area || 0)}" /></td>
-      <td><input type="number" min="0" step="1" data-${dataPrefix}-field="max_area" data-${dataPrefix}-index="${index}" value="${Number(slab.max_area || 0)}" /></td>
-      <td><input type="text" data-${dataPrefix}-field="label" data-${dataPrefix}-index="${index}" value="${escHtml(slab.label || "")}" /></td>
-      <td><input type="number" min="0" step="0.01" data-${dataPrefix}-field="quoted_price" data-${dataPrefix}-index="${index}" value="${Number(slab.quoted_price || 0)}" /></td>
+    <tr class="${slab._new ? 'slab-row-new' : ''}">
+      <td><input type="number" min="0" step="1" placeholder="e.g. 0" data-${dataPrefix}-field="min_area" data-${dataPrefix}-index="${index}" value="${Number(slab.min_area || 0)}" /></td>
+      <td><input type="number" min="0" step="1" placeholder="e.g. 2000" data-${dataPrefix}-field="max_area" data-${dataPrefix}-index="${index}" value="${Number(slab.max_area || 0)}" /></td>
+      <td><input type="text" placeholder="Label (required)" data-${dataPrefix}-field="label" data-${dataPrefix}-index="${index}" value="${escHtml(slab.label || "")}" class="${!slab.label ? 'slab-input-required' : ''}" /></td>
+      <td><input type="number" min="0" step="0.01" placeholder="e.g. 10000" data-${dataPrefix}-field="quoted_price" data-${dataPrefix}-index="${index}" value="${Number(slab.quoted_price || 0)}" /></td>
       <td><button class="btn btn-sm btn-outline" data-delete-${dataPrefix}-index="${index}">Delete</button></td>
     </tr>
   `).join("");
@@ -1085,6 +1113,10 @@ function _renderSlabTable(body, slabs, dataPrefix) {
       const field = input.dataset[`${dataPrefix}Field`];
       if (!slabs[index]) return;
       slabs[index][field] = field === "label" ? input.value : Number(input.value || 0);
+      // Update required highlight on label field
+      if (field === "label") {
+        input.classList.toggle("slab-input-required", !input.value.trim());
+      }
     });
   });
 
@@ -1121,7 +1153,7 @@ function populateAdminForm() {
   el.adminCompanyPhone().value = company.company_phone || "";
   el.adminCompanyEmail().value = company.company_email || "";
   el.adminContactName().value = company.contact_name || "";
-  document.getElementById("admin-urgency-surcharge").value = company.urgency_surcharge_percent || "10";
+  document.getElementById("admin-urgency-surcharge").value = (company.urgency_surcharge_percent != null && company.urgency_surcharge_percent !== "") ? company.urgency_surcharge_percent : "10";
   document.getElementById("admin-gst-percent").value = company.gst_percent || "18";
 
   el.adminCompanyProfile().value = joinLines(documentConfig.company_profile_paragraphs);
@@ -1526,15 +1558,35 @@ function _openQsEdit(secId) {
   const panel = document.getElementById(`qs-edit-panel-${secId}`);
   if (!panel) return;
 
-  const contentLines = (sec.content || []).map(item => {
+  // For table sections, extract _col_headers and strip from displayed content
+  let displayContent = sec.content || [];
+  let colHeaders = ["Task / Activity", "Duration"];
+  if (sec.content_type === "table" && displayContent.length && displayContent[0]?._col_headers) {
+    const hdr = displayContent[0];
+    colHeaders = Array.isArray(hdr.headers) ? hdr.headers : [hdr.col1 || "Task / Activity", hdr.col2 || "Duration"];
+    displayContent = displayContent.slice(1);
+  }
+
+  const contentLines = displayContent.map(item => {
     if (typeof item === "object") return JSON.stringify(item);
     return String(item);
   }).join("\n");
+
+  const colNameRow = sec.content_type === "table" ? `
+    <div class="qs-tbl-edit-cols">
+      ${colHeaders.map((h, i) => `
+        <label style="flex:${i === 0 ? 2 : 1}">
+          <span style="font-size:11px;color:var(--slate-500)">Column ${i + 1} Name</span>
+          <input class="search-input qs-edit-col-name" data-col-idx="${i}" value="${escHtml(h)}" placeholder="Column ${i + 1} name" />
+        </label>
+      `).join("")}
+    </div>` : "";
 
   panel.innerHTML = `
     <label><span>Heading</span>
       <input id="qs-edit-heading-${secId}" class="search-input" value="${escHtml(sec.heading)}" />
     </label>
+    ${colNameRow}
     <label><span>Content (one item per line${sec.content_type === 'table' ? ', JSON objects' : ''})</span>
       <textarea id="qs-edit-content-${secId}" class="search-input admin-textarea" rows="6">${escHtml(contentLines)}</textarea>
     </label>
@@ -1558,10 +1610,16 @@ async function _saveQsEdit(secId) {
 
   let content;
   if (sec.content_type === "table") {
-    // Each line should be a JSON object
-    content = rawContent.split("\n").filter(l => l.trim()).map(l => {
+    // Each line should be a JSON object; strip any existing _col_headers line
+    const rows = rawContent.split("\n").filter(l => l.trim()).map(l => {
       try { return JSON.parse(l); } catch { return { text: l.trim() }; }
-    });
+    }).filter(r => !r._col_headers);
+    // Re-attach updated column headers from the edit panel inputs
+    const colInputs = Array.from(panel.querySelectorAll(".qs-edit-col-name"));
+    const headers = colInputs.length
+      ? colInputs.map((inp, i) => inp.value.trim() || `Column ${i + 1}`)
+      : ["Task / Activity", "Duration"];
+    content = [{ _col_headers: true, headers }, ...rows];
   } else {
     content = rawContent.split("\n").map(l => l.trim()).filter(l => l);
   }
@@ -1595,6 +1653,76 @@ async function _onQsDelete(secId) {
 
 /* ── Add Section Modal — interactive builder ── */
 let _qsActiveType = "list";
+let _qsTableColumns = ["Task / Activity", "Duration"];
+
+function _qsRenderTableHeader() {
+  const header = document.getElementById("qs-tbl-header");
+  if (!header) return;
+  header.innerHTML = _qsTableColumns.map((col, i) => `
+    <div class="qs-tbl-col-wrap" style="flex:${i === 0 ? 2 : 1}">
+      <input class="qs-tbl-col-input" data-col-index="${i}" value="${escHtml(col)}" placeholder="Column ${i + 1} name" title="Edit column name" />
+      ${_qsTableColumns.length > 1
+        ? `<button type="button" class="qs-tbl-col-remove" data-remove-col="${i}" title="Remove column">&times;</button>`
+        : ""}
+    </div>
+  `).join("") +
+  `<button type="button" class="btn btn-outline btn-sm qs-tbl-add-col" id="btn-qs-add-col">+ Col</button>` +
+  `<span style="width:32px;flex-shrink:0"></span>`;
+
+  header.querySelectorAll(".qs-tbl-col-input").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const idx = Number(inp.dataset.colIndex);
+      _qsTableColumns[idx] = inp.value;
+      document.querySelectorAll("#qs-table-rows .qs-table-row").forEach(row => {
+        const cell = row.querySelectorAll("input.qs-tbl-cell")[idx];
+        if (cell) cell.placeholder = inp.value || `Column ${idx + 1}`;
+      });
+    });
+  });
+  header.querySelectorAll(".qs-tbl-col-remove").forEach(btn => {
+    btn.addEventListener("click", () => _qsRemoveTableColumn(Number(btn.dataset.removeCol)));
+  });
+  document.getElementById("btn-qs-add-col")?.addEventListener("click", _qsAddTableColumn);
+}
+
+function _qsAddTableColumn() {
+  _qsTableColumns.push(`Column ${_qsTableColumns.length + 1}`);
+  _qsRenderTableHeader();
+  // Append a new cell to every existing row
+  document.querySelectorAll("#qs-table-rows .qs-table-row").forEach(row => {
+    _qsAppendCellToRow(row, _qsTableColumns.length - 1);
+  });
+  // Focus the new header input
+  const newInput = document.getElementById("qs-tbl-header")?.querySelectorAll(".qs-tbl-col-input");
+  if (newInput?.length) newInput[newInput.length - 1].focus();
+}
+
+function _qsRemoveTableColumn(colIdx) {
+  if (_qsTableColumns.length <= 1) return;
+  _qsTableColumns.splice(colIdx, 1);
+  _qsRenderTableHeader();
+  document.querySelectorAll("#qs-table-rows .qs-table-row").forEach(row => {
+    const cells = row.querySelectorAll("input.qs-tbl-cell");
+    cells[colIdx]?.remove();
+    // Re-index and re-style remaining cells
+    row.querySelectorAll("input.qs-tbl-cell").forEach((cell, i) => {
+      cell.dataset.cellIndex = i;
+      cell.style.flex = i === 0 ? "2" : "1";
+      cell.placeholder = _qsTableColumns[i] || `Column ${i + 1}`;
+    });
+  });
+}
+
+function _qsAppendCellToRow(rowEl, colIdx) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "qs-tbl-cell";
+  input.dataset.cellIndex = colIdx;
+  input.placeholder = _qsTableColumns[colIdx] || `Column ${colIdx + 1}`;
+  input.style.flex = colIdx === 0 ? "2" : "1";
+  const removeBtn = rowEl.querySelector(".qs-builder-remove");
+  rowEl.insertBefore(input, removeBtn);
+}
 
 function _openQsAddModal() {
   const modal = el.qsAddModal();
@@ -1645,6 +1773,9 @@ function _qsResetBuilders() {
   document.getElementById("qs-list-items").innerHTML = "";
   document.getElementById("qs-para-items").innerHTML = "";
   document.getElementById("qs-table-rows").innerHTML = "";
+  // Reset columns to defaults and re-render header
+  _qsTableColumns = ["Task / Activity", "Duration"];
+  _qsRenderTableHeader();
 }
 
 function _qsAddBuilderItem(type, value, value2) {
@@ -1674,10 +1805,10 @@ function _qsAddBuilderItem(type, value, value2) {
     const container = document.getElementById("qs-table-rows");
     const div = document.createElement("div");
     div.className = "qs-builder-item qs-table-row";
-    div.innerHTML = `
-      <input type="text" style="flex:2" placeholder="Task / Activity" value="${escHtml(value || "")}" />
-      <input type="text" style="flex:1" placeholder="Duration" value="${escHtml(value2 || "")}" />
-      <button type="button" class="qs-builder-remove" title="Remove">&times;</button>`;
+    const cellsHtml = _qsTableColumns.map((col, i) =>
+      `<input type="text" class="qs-tbl-cell" data-cell-index="${i}" style="flex:${i === 0 ? 2 : 1}" placeholder="${escHtml(col)}" value="${escHtml(i === 0 ? (value || "") : (i === 1 ? (value2 || "") : ""))}" />`
+    ).join("");
+    div.innerHTML = cellsHtml + `<button type="button" class="qs-builder-remove" title="Remove">&times;</button>`;
     div.querySelector(".qs-builder-remove").addEventListener("click", () => div.remove());
     container.appendChild(div);
     if (!value) div.querySelector("input").focus();
@@ -1699,13 +1830,15 @@ function _qsCollectContent() {
     return Array.from(document.querySelectorAll("#qs-para-items .qs-builder-item textarea"))
       .map(ta => ta.value.trim()).filter(v => v);
   } else if (_qsActiveType === "table") {
+    const headers = [..._qsTableColumns];
     const rows = [];
     document.querySelectorAll("#qs-table-rows .qs-table-row").forEach(row => {
-      const inputs = row.querySelectorAll("input");
-      const task = inputs[0]?.value.trim();
-      const dur = inputs[1]?.value.trim();
-      if (task) rows.push({ task, duration: dur || "" });
+      const cells = Array.from(row.querySelectorAll("input.qs-tbl-cell")).map(inp => inp.value.trim());
+      if (cells.some(c => c)) rows.push({ cells });
     });
+    if (rows.length) {
+      return [{ _col_headers: true, headers }, ...rows];
+    }
     return rows;
   }
   return [];
@@ -1810,6 +1943,63 @@ async function loadRegSecurityQuestions() {
   } catch (_) {}
 }
 
+function evaluateRegPassword() {
+  const password = el.regPassword().value;
+  const confirm = el.regConfirmPassword().value;
+
+  const checks = {
+    length:  password.length >= 8,
+    upper:   /[A-Z]/.test(password),
+    lower:   /[a-z]/.test(password),
+    digit:   /\d/.test(password),
+    special: /[^A-Za-z0-9]/.test(password),
+  };
+  const score = Object.values(checks).filter(Boolean).length;
+
+  setPolicyState(el.regPolicyLength(),  checks.length);
+  setPolicyState(el.regPolicyUpper(),   checks.upper);
+  setPolicyState(el.regPolicyLower(),   checks.lower);
+  setPolicyState(el.regPolicyDigit(),   checks.digit);
+  setPolicyState(el.regPolicySpecial(), checks.special);
+  setPolicyState(el.regPolicyMatch(),   password.length > 0 && password === confirm);
+
+  // Strength bar
+  const fill = document.getElementById("reg-strength-fill");
+  const label = document.getElementById("reg-strength-label");
+  if (fill && label) {
+    if (!password) {
+      fill.style.width = "0";
+      fill.style.background = "";
+      label.textContent = "";
+      label.style.color = "";
+    } else if (score <= 2) {
+      fill.style.width = "25%";
+      fill.style.background = "#ef4444";
+      label.textContent = "Weak";
+      label.style.color = "#ef4444";
+    } else if (score <= 4) {
+      fill.style.width = "60%";
+      fill.style.background = "#f59e0b";
+      label.textContent = "Medium";
+      label.style.color = "#f59e0b";
+    } else {
+      fill.style.width = "100%";
+      fill.style.background = "#22c55e";
+      label.textContent = "Strong";
+      label.style.color = "#22c55e";
+    }
+  }
+}
+
+function checkPasswordPolicy(password) {
+  if (password.length < 8) return "Password must be at least 8 characters long.";
+  if (!/[A-Z]/.test(password)) return "Password must contain at least one uppercase letter.";
+  if (!/[a-z]/.test(password)) return "Password must contain at least one lowercase letter.";
+  if (!/\d/.test(password)) return "Password must contain at least one digit.";
+  if (!/[^A-Za-z0-9]/.test(password)) return "Password must contain at least one special character (e.g. @, #, !, $).";
+  return null;
+}
+
 async function onRegister() {
   const fullName = el.regFullName().value.trim();
   const email = el.regEmail().value.trim();
@@ -1827,8 +2017,9 @@ async function onRegister() {
     setAuthFeedback("Passwords do not match.", "error");
     return;
   }
-  if (password.length < 8) {
-    setAuthFeedback("Password must be at least 8 characters.", "error");
+  const policyError = checkPasswordPolicy(password);
+  if (policyError) {
+    setAuthFeedback(policyError, "error");
     return;
   }
   if (!securityQuestion || !securityAnswer) {
@@ -1903,7 +2094,7 @@ async function onLogin() {
     // Restore last active tab
     try {
       const savedTab = localStorage.getItem(TAB_STORAGE_KEY);
-      if (savedTab && ["overview","enquiries","studio","pipeline","admin"].includes(savedTab)) {
+      if (savedTab && ["overview","enquiries","studio","pipeline","deq","admin"].includes(savedTab)) {
         activateTab(savedTab);
       }
     } catch (_) {}
@@ -2003,6 +2194,11 @@ async function onForgotPassword() {
 
   if (newPassword !== confirmPassword) {
     setAuthFeedback("New password and confirm password do not match.", "error");
+    return;
+  }
+  const policyError = checkPasswordPolicy(newPassword);
+  if (policyError) {
+    setAuthFeedback(policyError, "error");
     return;
   }
 
@@ -2131,12 +2327,46 @@ async function onSaveDocument() {
 
 async function onSavePricing() {
   try {
+    const allSlabs = state.adminConfig?.pricing?.slabs || [];
+    const allNewSlabs = state.adminConfig?.pricing?.new_building_slabs || [];
+
+    // Front-end validation
+    for (const [i, s] of allSlabs.entries()) {
+      if (!String(s.label || "").trim()) {
+        setAdminFeedback(`Building slab ${i + 1}: Label is required.`, "error");
+        toast(`Building slab ${i + 1}: Label is required`, "error");
+        // Highlight the offending row
+        const row = el.adminPricingBody()?.rows[i];
+        if (row) { row.classList.add("slab-row-error"); setTimeout(() => row.classList.remove("slab-row-error"), 3000); }
+        return;
+      }
+      if (Number(s.min_area) > Number(s.max_area)) {
+        setAdminFeedback(`Building slab ${i + 1}: Min area cannot be greater than Max area.`, "error");
+        toast(`Building slab ${i + 1}: Min > Max`, "error");
+        return;
+      }
+    }
+    for (const [i, s] of allNewSlabs.entries()) {
+      if (!String(s.label || "").trim()) {
+        setAdminFeedback(`New Building slab ${i + 1}: Label is required.`, "error");
+        toast(`New Building slab ${i + 1}: Label is required`, "error");
+        const row = el.adminNewBuildingPricingBody()?.rows[i];
+        if (row) { row.classList.add("slab-row-error"); setTimeout(() => row.classList.remove("slab-row-error"), 3000); }
+        return;
+      }
+      if (Number(s.min_area) > Number(s.max_area)) {
+        setAdminFeedback(`New Building slab ${i + 1}: Min area cannot be greater than Max area.`, "error");
+        toast(`New Building slab ${i + 1}: Min > Max`, "error");
+        return;
+      }
+    }
+
     setAdminFeedback("Saving pricing slabs...", "info");
     const r = await api("/api/bhc/admin/pricing", {
       method: "PUT",
       body: JSON.stringify({
-        slabs: state.adminConfig?.pricing?.slabs || [],
-        new_building_slabs: state.adminConfig?.pricing?.new_building_slabs || [],
+        slabs: allSlabs.map(({ _new: _, ...s }) => s),
+        new_building_slabs: allNewSlabs.map(({ _new: _, ...s }) => s),
       }),
     });
     state.adminConfig.pricing = await r.json();
@@ -2206,11 +2436,15 @@ function onAddPricingRow() {
   const nextMinArea = lastSlab ? Number(lastSlab.max_area || 0) + 1 : 0;
   state.adminConfig.pricing.slabs.push({
     min_area: nextMinArea,
-    max_area: nextMinArea,
+    max_area: nextMinArea + 9999,
     label: "",
     quoted_price: 0,
+    _new: true,
   });
   renderAdminPricingRows();
+  // Scroll the new row into view
+  const wrap = el.adminPricingBody().closest(".admin-table-wrap");
+  if (wrap) wrap.scrollTop = wrap.scrollHeight;
 }
 
 function onAddNewBuildingPricingRow() {
@@ -2224,11 +2458,15 @@ function onAddNewBuildingPricingRow() {
   const nextMinArea = lastSlab ? Number(lastSlab.max_area || 0) + 1 : 0;
   slabs.push({
     min_area: nextMinArea,
-    max_area: nextMinArea,
+    max_area: nextMinArea + 9999,
     label: "",
     quoted_price: 0,
+    _new: true,
   });
   renderAdminPricingRows();
+  // Scroll the new row into view
+  const wrap = el.adminNewBuildingPricingBody().closest(".admin-table-wrap");
+  if (wrap) wrap.scrollTop = wrap.scrollHeight;
 }
 
 /* ── Admin Section Edit/Lock Toggle ── */
@@ -2312,6 +2550,24 @@ async function init() {
   el.btnLogin().addEventListener("click", onLogin);
   el.btnAuthToggle().addEventListener("click", () => toggleAuthMode());
   el.btnRegister().addEventListener("click", onRegister);
+  [el.regPassword(), el.regConfirmPassword()].forEach(input => {
+    input.addEventListener("input", evaluateRegPassword);
+  });
+  // Eye-toggle buttons on registration form
+  document.querySelectorAll(".auth-pw-toggle").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      const isHidden = input.type === "password";
+      input.type = isHidden ? "text" : "password";
+      // Swap SVG visibility (first = eye-open, second = eye-slash)
+      const svgs = btn.querySelectorAll("svg");
+      if (svgs.length === 2) {
+        svgs[0].classList.toggle("hidden", isHidden);
+        svgs[1].classList.toggle("hidden", !isHidden);
+      }
+    });
+  });
   el.btnForgotPasswordToggle().addEventListener("click", () => toggleForgotPasswordPanel());
   el.btnForgotLookup().addEventListener("click", onForgotLookup);
   el.btnForgotBack().addEventListener("click", onForgotBack);
@@ -2375,6 +2631,21 @@ async function init() {
   el.processedPropertyFilter().addEventListener("change", applyProcessedFilters);
   el.processedDateFrom().addEventListener("change", applyProcessedFilters);
   el.processedDateTo().addEventListener("change", applyProcessedFilters);
+
+  // Date field clear buttons
+  document.querySelectorAll(".date-clear-btn").forEach(btn => {
+    const input = document.getElementById(btn.dataset.target);
+    if (!input) return;
+    const wrap = btn.closest(".date-field-wrap");
+    // Keep has-value class in sync
+    const syncState = () => wrap.classList.toggle("has-value", !!input.value);
+    input.addEventListener("change", () => { syncState(); applyProcessedFilters(); });
+    btn.addEventListener("click", () => {
+      input.value = "";
+      syncState();
+      applyProcessedFilters();
+    });
+  });
 
   el.btnGenerate().addEventListener("click", onGenerateQuote);
   el.btnDownloadPdf().addEventListener("click", () => onDownload("pdf"));
@@ -2928,7 +3199,7 @@ function renderProcessed(rows) {
 
   body.innerHTML = rows.map((r, i) => `
     <tr class="row-sync-${getProcessedSync(r.enquiry_id)}" data-row-id="${escHtml(r.enquiry_id)}">
-      <td>${escHtml(r.enquiry_id)}</td>
+      <td>${escHtml(r.reference_number || "—")}</td>
       <td>${escHtml(r.client_name)}</td>
       <td>${escHtml(r.phone)}</td>
       <td>${escHtml(r.area)}</td>
@@ -3070,3 +3341,666 @@ async function onExport() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEQ MODULE — Detailed Examination Quotation
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Set to true to enable the DEQ tab; false shows the "Coming Soon" screen
+const DEQ_ENABLED = false;
+
+// ── DEQ DOM helpers ───────────────────────────────────────────────────────
+const deqEl = {
+  bhcSelect: () => document.getElementById("deq-bhc-select"),
+  clientName: () => document.getElementById("deq-client-name"),
+  phone: () => document.getElementById("deq-phone"),
+  propertyType: () => document.getElementById("deq-property-type"),
+  area: () => document.getElementById("deq-area"),
+  examType: () => document.getElementById("deq-exam-type"),
+  amount: () => document.getElementById("deq-amount"),
+  issueDescription: () => document.getElementById("deq-issue-description"),
+  formFeedback: () => document.getElementById("deq-form-feedback"),
+  createdRef: () => document.getElementById("deq-created-ref"),
+  btnCreate: () => document.getElementById("btn-create-deq"),
+  btnExport: () => document.getElementById("btn-deq-export"),
+  search: () => document.getElementById("deq-search"),
+  statusFilter: () => document.getElementById("deq-status-filter"),
+  body: () => document.getElementById("deq-body"),
+  count: () => document.getElementById("deq-count"),
+  mTotal: () => document.getElementById("deq-m-total"),
+  mConverted: () => document.getElementById("deq-m-converted"),
+  mRevenue: () => document.getElementById("deq-m-revenue"),
+  mPaid: () => document.getElementById("deq-m-paid"),
+  studioLocked: () => document.getElementById("deq-studio-locked"),
+  studioContent: () => document.getElementById("deq-studio-content"),
+  btnAddSection: () => document.getElementById("btn-add-deq-section"),
+  qsList: () => document.getElementById("deq-qs-list"),
+  // Add modal
+  addModal: () => document.getElementById("deq-qs-add-modal"),
+  addHeading: () => document.getElementById("deq-qs-new-heading"),
+  addCtype: () => document.getElementById("deq-qs-new-ctype"),   // hidden input
+  addBuilder: () => document.getElementById("deq-qs-builder"),
+  btnAddItem: () => document.getElementById("btn-deq-qs-add-item"),
+  btnAddSave: () => document.getElementById("btn-deq-qs-add-save"),
+  btnAddCancel: () => document.getElementById("btn-deq-qs-add-cancel"),
+  btnAddCancel2: () => document.getElementById("btn-deq-qs-add-cancel2"),
+  addFeedback: () => document.getElementById("deq-qs-add-feedback"),
+  // Edit modal
+  editModal: () => document.getElementById("deq-qs-edit-modal"),
+  editHeading: () => document.getElementById("deq-qs-edit-heading"),
+  editCtype: () => document.getElementById("deq-qs-edit-ctype"),  // hidden input
+  editBuilder: () => document.getElementById("deq-qs-edit-builder"),
+  btnEditAddItem: () => document.getElementById("btn-deq-qs-edit-add-item"),
+  btnEditSave: () => document.getElementById("btn-deq-qs-edit-save"),
+  btnEditCancel: () => document.getElementById("btn-deq-qs-edit-cancel"),
+  btnEditCancel2: () => document.getElementById("btn-deq-qs-edit-cancel2"),
+  editFeedback: () => document.getElementById("deq-qs-edit-feedback"),
+  editId: () => document.getElementById("deq-qs-edit-id"),
+};
+
+// ── DEQ Sync state ────────────────────────────────────────────────────────
+function setDeqSync(id, syncState) {
+  state.deqSync[id] = syncState;
+}
+function getDeqSync(id) {
+  return state.deqSync[id] || "idle";
+}
+
+// ── Load all DEQ data ─────────────────────────────────────────────────────
+async function loadDeqData() {
+  try {
+    const [pipelineResp, dashResp, clientsResp] = await Promise.all([
+      api("/api/deq/pipeline"),
+      api("/api/deq/dashboard"),
+      api("/api/deq/bhc-clients"),
+    ]);
+    const [pipelineRes, dashRes, clientsRes] = await Promise.all([
+      pipelineResp.json(),
+      dashResp.json(),
+      clientsResp.json(),
+    ]);
+    state.deqRecords = pipelineRes.records || [];
+    state.deqFiltered = [...state.deqRecords];
+    renderDeqStats(dashRes);
+    renderDeqPipeline(state.deqFiltered);
+    populateDeqBhcSelector(clientsRes.clients || []);
+    state.deqBhcClients = clientsRes.clients || [];
+    updateDeqCount();
+
+    // Load studio if admin
+    if (state.session?.is_admin) {
+      deqEl.studioLocked()?.classList.add("hidden");
+      deqEl.studioContent()?.classList.remove("hidden");
+      loadDeqSections();
+    } else {
+      deqEl.studioLocked()?.classList.remove("hidden");
+      deqEl.studioContent()?.classList.add("hidden");
+    }
+  } catch (err) {
+    toast("Failed to load DEQ data: " + err.message, "error");
+  }
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────
+function renderDeqStats(summary) {
+  const fmt = (v) => "₹ " + Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const el = deqEl;
+  if (el.mTotal()) el.mTotal().textContent = summary.total ?? 0;
+  if (el.mConverted()) el.mConverted().textContent = summary.converted ?? 0;
+  if (el.mRevenue()) el.mRevenue().textContent = fmt(summary.total_revenue);
+  if (el.mPaid()) el.mPaid().textContent = fmt(summary.converted_revenue);
+}
+
+function updateDeqCount() {
+  const c = deqEl.count();
+  if (c) c.textContent = state.deqFiltered.length;
+}
+
+// ── BHC Client Selector ───────────────────────────────────────────────────
+function populateDeqBhcSelector(clients) {
+  const sel = deqEl.bhcSelect();
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Select Linked BHC Record (optional) —</option>';
+  clients.forEach((c) => {
+    const label = [c.bhc_reference_number, c.client_name, c.phone].filter(Boolean).join(" | ");
+    const opt = document.createElement("option");
+    opt.value = c.id || "";
+    opt.dataset.record = JSON.stringify(c);
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+}
+
+function onDeqBhcSelect() {
+  const sel = deqEl.bhcSelect();
+  if (!sel || !sel.value) return;
+  const opt = sel.options[sel.selectedIndex];
+  try {
+    const rec = JSON.parse(opt.dataset.record || "{}");
+    if (deqEl.clientName() && rec.client_name) deqEl.clientName().value = rec.client_name;
+    if (deqEl.phone() && rec.phone) deqEl.phone().value = rec.phone || "";
+    if (deqEl.propertyType() && rec.property_type) deqEl.propertyType().value = rec.property_type || "";
+    if (deqEl.area() && rec.area) deqEl.area().value = rec.area || "";
+  } catch (_) {}
+}
+
+// ── Create DEQ ────────────────────────────────────────────────────────────
+async function onCreateDeq() {
+  const fb = deqEl.formFeedback();
+  const clientName = (deqEl.clientName()?.value || "").trim();
+  const amount = parseFloat(deqEl.amount()?.value || "0");
+  if (!clientName) {
+    if (fb) { fb.textContent = "Client name is required."; fb.className = "feedback feedback-error"; fb.classList.remove("hidden"); }
+    return;
+  }
+  if (isNaN(amount) || amount < 0) {
+    if (fb) { fb.textContent = "Enter a valid DEQ amount."; fb.className = "feedback feedback-error"; fb.classList.remove("hidden"); }
+    return;
+  }
+
+  const sel = deqEl.bhcSelect();
+  const selOpt = sel && sel.value ? sel.options[sel.selectedIndex] : null;
+  let bhcEnquiryId = "";
+  let bhcRefNumber = "";
+  if (selOpt) {
+    try {
+      const rec = JSON.parse(selOpt.dataset.record || "{}");
+      bhcEnquiryId = rec.id || "";
+      bhcRefNumber = rec.bhc_reference_number || "";
+    } catch (_) {}
+  }
+
+  const payload = {
+    bhc_enquiry_id: bhcEnquiryId,
+    bhc_ref_number: bhcRefNumber,
+    client_name: clientName,
+    phone: (deqEl.phone()?.value || "").trim(),
+    property_type: (deqEl.propertyType()?.value || "").trim(),
+    area: parseFloat(deqEl.area()?.value) || null,
+    issue_description: (deqEl.issueDescription()?.value || "").trim(),
+    examination_type: deqEl.examType()?.value || "Structural",
+    deq_quoted_amount: amount,
+  };
+
+  const btn = deqEl.btnCreate();
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await api("/api/deq/pipeline", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } });
+    const res = await resp.json();
+    const ref = res.record?.deq_reference_number || "Created";
+    const refDiv = deqEl.createdRef();
+    if (refDiv) { refDiv.textContent = "✔ DEQ Created: " + ref; refDiv.classList.remove("hidden"); }
+    if (fb) fb.classList.add("hidden");
+    // Clear form
+    ["clientName","phone","propertyType","area","amount","issueDescription"].forEach((k) => { if (deqEl[k]()) deqEl[k]().value = ""; });
+    if (deqEl.bhcSelect()) deqEl.bhcSelect().value = "";
+    toast("DEQ Quotation created: " + ref, "success");
+    loadDeqData();
+  } catch (err) {
+    if (fb) { fb.textContent = err.message; fb.className = "feedback feedback-error"; fb.classList.remove("hidden"); }
+    toast(err.message, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── DEQ Pipeline Render ───────────────────────────────────────────────────
+function renderDeqPipeline(rows) {
+  const tbody = deqEl.body();
+  if (!tbody) return;
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="muted">No DEQ records found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map((row) => {
+    const sid = escHtml(row.id);
+    const syncState = getDeqSync(row.id);
+    const syncPill = syncState === "saving"
+      ? '<span class="sync-pill saving">Saving…</span>'
+      : syncState === "saved"
+        ? '<span class="sync-pill saved">Saved ✓</span>'
+        : syncState === "error"
+          ? '<span class="sync-pill error">Error</span>'
+          : '<span class="sync-pill">—</span>';
+    return `<tr data-id="${sid}">
+      <td><span class="mono text-sm">${escHtml(row.deq_reference_number || "—")}</span></td>
+      <td><span class="mono text-sm">${escHtml(row.bhc_ref_number || "—")}</span></td>
+      <td>${escHtml(row.client_name || "")}</td>
+      <td>${escHtml(row.examination_type || "")}</td>
+      <td>₹ ${Number(row.deq_quoted_amount || 0).toLocaleString("en-IN", {maximumFractionDigits:0})}</td>
+      <td>
+        <select class="filter-select filter-select--sm deq-status-sel" data-id="${sid}">
+          ${["Quoted","Converted","Dropped"].map((s) => `<option value="${s}"${row.status===s?" selected":""}>${s}</option>`).join("")}
+        </select>
+      </td>
+      <td>
+        <select class="filter-select filter-select--sm deq-payment-sel" data-id="${sid}">
+          ${["Pending","Paid"].map((p) => `<option value="${p}"${row.payment_status===p?" selected":""}>${p}</option>`).join("")}
+        </select>
+      </td>
+      <td><input type="text" class="search-input search-input--sm deq-remarks-inp" data-id="${sid}" value="${escHtml(row.remarks||"")}" placeholder="Remarks" /></td>
+      <td>${syncPill}</td>
+      <td class="actions-cell">
+        <button class="btn btn-sm btn-primary deq-save-btn" data-id="${sid}" title="Save changes">Save</button>
+        <button class="btn btn-sm btn-outline deq-pdf-btn" data-id="${sid}" title="Download PDF">PDF</button>
+        ${state.session?.is_admin ? `<button class="btn btn-sm btn-danger deq-del-btn" data-id="${sid}" title="Delete">Del</button>` : ""}
+      </td>
+    </tr>`;
+  }).join("");
+
+  // Bind events
+  tbody.querySelectorAll(".deq-save-btn").forEach((btn) => {
+    btn.addEventListener("click", () => onDeqSave(btn.dataset.id));
+  });
+  tbody.querySelectorAll(".deq-pdf-btn").forEach((btn) => {
+    btn.addEventListener("click", () => onDeqDownloadPdf(btn.dataset.id));
+  });
+  tbody.querySelectorAll(".deq-del-btn").forEach((btn) => {
+    btn.addEventListener("click", () => onDeqDelete(btn.dataset.id));
+  });
+}
+
+// ── Apply Filters ─────────────────────────────────────────────────────────
+function applyDeqFilters() {
+  const q = (deqEl.search()?.value || "").toLowerCase();
+  const status = deqEl.statusFilter()?.value || "all";
+  state.deqFiltered = state.deqRecords.filter((r) => {
+    const matchStatus = status === "all" || r.status === status;
+    const matchSearch = !q || [r.deq_reference_number, r.bhc_ref_number, r.client_name, r.examination_type]
+      .some((v) => v && v.toLowerCase().includes(q));
+    return matchStatus && matchSearch;
+  });
+  renderDeqPipeline(state.deqFiltered);
+  updateDeqCount();
+}
+
+// ── Save DEQ Record ───────────────────────────────────────────────────────
+async function onDeqSave(id) {
+  const row = document.querySelector(`tr[data-id="${id}"]`);
+  if (!row) return;
+  const status = row.querySelector(".deq-status-sel")?.value;
+  const paymentStatus = row.querySelector(".deq-payment-sel")?.value;
+  const remarks = row.querySelector(".deq-remarks-inp")?.value || "";
+
+  setDeqSync(id, "saving");
+  renderDeqPipeline(state.deqFiltered);
+
+  try {
+    await api(`/api/deq/pipeline/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ status, payment_status: paymentStatus, remarks }),
+      headers: { "Content-Type": "application/json" },
+    });
+    setDeqSync(id, "saved");
+    // Update local state
+    const idx = state.deqRecords.findIndex((r) => r.id === id);
+    if (idx >= 0) { state.deqRecords[idx].status = status; state.deqRecords[idx].payment_status = paymentStatus; state.deqRecords[idx].remarks = remarks; }
+    applyDeqFilters();
+    toast("DEQ record saved", "success");
+  } catch (err) {
+    setDeqSync(id, "error");
+    applyDeqFilters();
+    toast(err.message, "error");
+  }
+}
+
+// ── Download DEQ PDF ──────────────────────────────────────────────────────
+async function onDeqDownloadPdf(id) {
+  const btn = document.querySelector(`.deq-pdf-btn[data-id="${id}"]`);
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await fetch(`/api/deq/download/pdf/${id}`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: "PDF generation failed" }));
+      throw new Error(err.detail || "PDF error");
+    }
+    const blob = await resp.blob();
+    const cd = resp.headers.get("content-disposition") || "";
+    const match = cd.match(/filename="(.+)"/);
+    const filename = match ? match[1] : `DEQ_${id}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("DEQ PDF downloaded", "success");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Delete DEQ ────────────────────────────────────────────────────────────
+async function onDeqDelete(id) {
+  const confirmed = await confirmAction({ title: "Delete DEQ Record", message: "This action cannot be undone. Delete this DEQ record?", confirmText: "Delete", type: "danger" });
+  if (!confirmed) return;
+  try {
+    await api(`/api/deq/pipeline/${id}`, { method: "DELETE" });
+    state.deqRecords = state.deqRecords.filter((r) => r.id !== id);
+    applyDeqFilters();
+    toast("DEQ record deleted", "success");
+    loadDeqData(); // refresh stats
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ── Export DEQ Excel ──────────────────────────────────────────────────────
+async function onDeqExport() {
+  const btn = deqEl.btnExport();
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await fetch("/api/deq/export", { credentials: "include" });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: "Export failed" }));
+      throw new Error(err.detail || "Export failed");
+    }
+    const blob = await resp.blob();
+    const cd = resp.headers.get("content-disposition") || "";
+    const match = cd.match(/filename="(.+)"/);
+    const filename = match ? match[1] : "DEQ_Pipeline.xlsx";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("DEQ pipeline exported", "success");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── DEQ Sections Admin ────────────────────────────────────────────────────
+async function loadDeqSections() {
+  try {
+    const resp = await api("/api/deq/admin/sections");
+    const res = await resp.json();
+    state.deqSections = res.deq_sections || [];
+    renderDeqAdminSections(state.deqSections);
+  } catch (err) {
+    toast("Failed to load DEQ sections: " + err.message, "error");
+  }
+}
+
+function renderDeqAdminSections(sections) {
+  const container = deqEl.qsList();
+  if (!container) return;
+  if (!sections || sections.length === 0) {
+    container.innerHTML = '<p class="muted" style="padding:12px 0">No sections configured. Click &quot;+ Add New DEQ Section&quot; to create one.</p>';
+    return;
+  }
+  container.innerHTML = sections.map((sec, idx) => {
+    const typeLabel = { list: "Numbered List", paragraph: "Paragraphs", table: "Table", dynamic: "Dynamic" }[sec.content_type] || sec.content_type;
+    const systemBadge = sec.is_system
+      ? '<span class="qs-badge qs-badge--system">System</span>'
+      : '<span class="qs-badge qs-badge--custom">Custom</span>';
+    const hiddenBadge = !sec.is_visible ? '<span class="qs-badge qs-badge--hidden">Hidden</span>' : "";
+    const isDynamic = sec.content_type === "dynamic";
+    return `
+      <div class="qs-item" data-deq-id="${sec.id}" data-deq-idx="${idx}" draggable="true">
+        <div class="qs-drag-handle" title="Drag to reorder">&#9776;</div>
+        <div class="qs-item-info">
+          <div class="qs-item-heading">${escHtml(sec.heading)}</div>
+          <div class="qs-item-meta">${systemBadge}${hiddenBadge} ${escHtml(typeLabel)}</div>
+        </div>
+        <label class="qs-toggle" title="${sec.is_visible ? "Visible \u2014 click to hide" : "Hidden \u2014 click to show"}">
+          <input type="checkbox" ${sec.is_visible ? "checked" : ""} data-deq-toggle="${sec.id}" />
+          <span class="qs-toggle-slider"></span>
+        </label>
+        <div class="qs-item-actions">
+          ${!isDynamic ? `<button class="btn btn-outline btn-sm" data-deq-edit="${sec.id}">Edit</button>` : ""}
+          ${!sec.is_system ? `<button class="btn btn-outline btn-sm" style="color:#dc2626" data-deq-delete="${sec.id}">Delete</button>` : ""}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  container.querySelectorAll(".qs-item[draggable='true']").forEach((item) => {
+    item.addEventListener("dragstart", _onDeqQsDragStart);
+    item.addEventListener("dragover", _onDeqQsDragOver);
+    item.addEventListener("dragleave", _onDeqQsDragLeave);
+    item.addEventListener("drop", _onDeqQsDrop);
+    item.addEventListener("dragend", _onDeqQsDragEnd);
+  });
+  container.querySelectorAll("[data-deq-toggle]").forEach((toggle) => {
+    toggle.addEventListener("change", _onDeqQsToggle);
+  });
+  container.querySelectorAll("[data-deq-edit]").forEach((btn) => {
+    btn.addEventListener("click", () => openDeqQsEditModal(parseInt(btn.dataset.deqEdit)));
+  });
+  container.querySelectorAll("[data-deq-delete]").forEach((btn) => {
+    btn.addEventListener("click", () => onDeqQsDelete(parseInt(btn.dataset.deqDelete)));
+  });
+}
+
+// ── DEQ Drag & Drop ───────────────────────────────────────────────────────
+let _deqQsDragSrcId = null;
+
+function _onDeqQsDragStart(e) {
+  _deqQsDragSrcId = parseInt(e.currentTarget.dataset.deqId);
+  e.currentTarget.classList.add("qs-dragging");
+  e.dataTransfer.effectAllowed = "move";
+}
+function _onDeqQsDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  e.currentTarget.classList.add("qs-drag-over");
+}
+function _onDeqQsDragLeave(e) {
+  e.currentTarget.classList.remove("qs-drag-over");
+}
+function _onDeqQsDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove("qs-drag-over");
+  const targetId = parseInt(e.currentTarget.dataset.deqId);
+  if (!_deqQsDragSrcId || _deqQsDragSrcId === targetId) return;
+  const srcIdx = state.deqSections.findIndex((s) => s.id === _deqQsDragSrcId);
+  const tgtIdx = state.deqSections.findIndex((s) => s.id === targetId);
+  if (srcIdx < 0 || tgtIdx < 0) return;
+  const [moved] = state.deqSections.splice(srcIdx, 1);
+  state.deqSections.splice(tgtIdx, 0, moved);
+  renderDeqAdminSections(state.deqSections);
+  api("/api/deq/admin/sections/reorder", {
+    method: "PUT",
+    body: JSON.stringify({ ordered_ids: state.deqSections.map((s) => s.id) }),
+    headers: { "Content-Type": "application/json" },
+  }).catch((err) => { toast("Failed to save order: " + err.message, "error"); loadDeqSections(); });
+}
+function _onDeqQsDragEnd(e) {
+  e.currentTarget.classList.remove("qs-dragging");
+  _deqQsDragSrcId = null;
+}
+function _onDeqQsToggle(e) {
+  const id = parseInt(e.currentTarget.dataset.deqToggle);
+  const isNowVisible = e.currentTarget.checked;
+  api(`/api/deq/admin/sections/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ is_visible: isNowVisible }),
+    headers: { "Content-Type": "application/json" },
+  }).then(() => loadDeqSections())
+    .catch((err) => { toast(err.message, "error"); e.currentTarget.checked = !isNowVisible; });
+}
+
+async function onDeqQsDelete(id) {
+  const confirmed = await confirmAction({ title: "Delete DEQ Section", message: "Delete this section? This cannot be undone.", confirmText: "Delete", type: "danger" });
+  if (!confirmed) return;
+  try {
+    await api(`/api/deq/admin/sections/${id}`, { method: "DELETE" });
+    toast("DEQ section deleted", "success");
+    loadDeqSections();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ── DEQ Studio Modals ─────────────────────────────────────────────────────
+let _deqBuilderItems = [];
+let _deqEditBuilderItems = [];
+
+function openDeqQsAddModal() {
+  _deqBuilderItems = [];
+  if (deqEl.addHeading()) deqEl.addHeading().value = "";
+  const ctypeInput = deqEl.addCtype();
+  if (ctypeInput) ctypeInput.value = "list";
+  document.querySelectorAll("#deq-qs-add-modal .qs-type-card").forEach((c) =>
+    c.classList.toggle("qs-type-card--active", c.dataset.deqTypeAdd === "list")
+  );
+  if (deqEl.addBuilder()) deqEl.addBuilder().innerHTML = "";
+  if (deqEl.addFeedback()) deqEl.addFeedback().classList.add("hidden");
+  deqEl.addModal()?.classList.remove("hidden");
+}
+
+function closeDeqQsAddModal() {
+  deqEl.addModal()?.classList.add("hidden");
+}
+
+function openDeqQsEditModal(id) {
+  const sec = state.deqSections.find((s) => s.id === id);
+  if (!sec) return;
+  if (deqEl.editId()) deqEl.editId().value = id;
+  if (deqEl.editHeading()) deqEl.editHeading().value = sec.heading;
+  const ctype = sec.content_type || "list";
+  const ctypeInput = deqEl.editCtype();
+  if (ctypeInput) ctypeInput.value = ctype;
+  document.querySelectorAll("#deq-qs-edit-modal .qs-type-card").forEach((c) =>
+    c.classList.toggle("qs-type-card--active", c.dataset.deqTypeEdit === ctype)
+  );
+  _deqEditBuilderItems = Array.isArray(sec.content) ? JSON.parse(JSON.stringify(sec.content)) : [];
+  renderDeqEditBuilder();
+  if (deqEl.editFeedback()) deqEl.editFeedback().classList.add("hidden");
+  deqEl.editModal()?.classList.remove("hidden");
+}
+
+function closeDeqQsEditModal() {
+  deqEl.editModal()?.classList.add("hidden");
+}
+
+function renderDeqAddBuilder() {
+  const container = deqEl.addBuilder();
+  if (!container) return;
+  container.innerHTML = _deqBuilderItems.map((item, idx) =>
+    `<div class="qs-builder-item">
+      <div class="qs-builder-item-num">${idx + 1}</div>
+      <input type="text" class="search-input" value="${escHtml(String(item))}" data-idx="${idx}" placeholder="Item ${idx + 1}" />
+      <button class="qs-builder-remove deq-add-rm" data-idx="${idx}" title="Remove">&times;</button>
+    </div>`
+  ).join("");
+  container.querySelectorAll(".deq-add-rm").forEach((btn) => {
+    btn.addEventListener("click", () => { _deqBuilderItems.splice(parseInt(btn.dataset.idx), 1); renderDeqAddBuilder(); });
+  });
+  container.querySelectorAll("input").forEach((inp) => {
+    inp.addEventListener("input", () => { _deqBuilderItems[parseInt(inp.dataset.idx)] = inp.value; });
+  });
+}
+
+function renderDeqEditBuilder() {
+  const container = deqEl.editBuilder();
+  if (!container) return;
+  container.innerHTML = _deqEditBuilderItems.map((item, idx) =>
+    `<div class="qs-builder-item">
+      <div class="qs-builder-item-num">${idx + 1}</div>
+      <input type="text" class="search-input" value="${escHtml(String(item))}" data-idx="${idx}" placeholder="Item ${idx + 1}" />
+      <button class="qs-builder-remove deq-edit-rm" data-idx="${idx}" title="Remove">&times;</button>
+    </div>`
+  ).join("");
+  container.querySelectorAll(".deq-edit-rm").forEach((btn) => {
+    btn.addEventListener("click", () => { _deqEditBuilderItems.splice(parseInt(btn.dataset.idx), 1); renderDeqEditBuilder(); });
+  });
+  container.querySelectorAll("input").forEach((inp) => {
+    inp.addEventListener("input", () => { _deqEditBuilderItems[parseInt(inp.dataset.idx)] = inp.value; });
+  });
+}
+
+async function onDeqQsAddSave() {
+  const heading = (deqEl.addHeading()?.value || "").trim();
+  const fb = deqEl.addFeedback();
+  if (!heading) {
+    if (fb) { fb.textContent = "Heading is required."; fb.className = "feedback feedback-error"; fb.classList.remove("hidden"); }
+    return;
+  }
+  try {
+    await api("/api/deq/admin/sections", {
+      method: "POST",
+      body: JSON.stringify({ heading, content_type: deqEl.addCtype()?.value || "list", content: _deqBuilderItems.filter(Boolean) }),
+      headers: { "Content-Type": "application/json" },
+    });
+    closeDeqQsAddModal();
+    toast("DEQ section added", "success");
+    loadDeqSections();
+  } catch (err) {
+    if (fb) { fb.textContent = err.message; fb.className = "feedback feedback-error"; fb.classList.remove("hidden"); }
+  }
+}
+
+async function onDeqQsEditSave() {
+  const id = parseInt(deqEl.editId()?.value);
+  const heading = (deqEl.editHeading()?.value || "").trim();
+  const fb = deqEl.editFeedback();
+  if (!heading) {
+    if (fb) { fb.textContent = "Heading is required."; fb.className = "feedback feedback-error"; fb.classList.remove("hidden"); }
+    return;
+  }
+  try {
+    await api(`/api/deq/admin/sections/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ heading, content_type: deqEl.editCtype()?.value || "list", content: _deqEditBuilderItems.filter(Boolean) }),
+      headers: { "Content-Type": "application/json" },
+    });
+    closeDeqQsEditModal();
+    toast("DEQ section updated", "success");
+    loadDeqSections();
+  } catch (err) {
+    if (fb) { fb.textContent = err.message; fb.className = "feedback feedback-error"; fb.classList.remove("hidden"); }
+  }
+}
+
+// ── DEQ Event Binding ─────────────────────────────────────────────────────
+function bindDeqEvents() {
+  deqEl.bhcSelect()?.addEventListener("change", onDeqBhcSelect);
+  deqEl.btnCreate()?.addEventListener("click", onCreateDeq);
+  deqEl.btnExport()?.addEventListener("click", onDeqExport);
+  deqEl.search()?.addEventListener("input", applyDeqFilters);
+  deqEl.statusFilter()?.addEventListener("change", applyDeqFilters);
+  deqEl.btnAddSection()?.addEventListener("click", openDeqQsAddModal);
+  // Add modal
+  deqEl.btnAddCancel()?.addEventListener("click", closeDeqQsAddModal);
+  deqEl.btnAddCancel2()?.addEventListener("click", closeDeqQsAddModal);
+  deqEl.btnAddSave()?.addEventListener("click", onDeqQsAddSave);
+  deqEl.btnAddItem()?.addEventListener("click", () => { _deqBuilderItems.push(""); renderDeqAddBuilder(); });
+  // Add modal type cards
+  document.querySelectorAll("#deq-qs-add-modal .qs-type-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const ctype = card.dataset.deqTypeAdd;
+      document.querySelectorAll("#deq-qs-add-modal .qs-type-card").forEach((c) => c.classList.remove("qs-type-card--active"));
+      card.classList.add("qs-type-card--active");
+      const inp = document.getElementById("deq-qs-new-ctype");
+      if (inp) inp.value = ctype;
+    });
+  });
+  // Edit modal
+  deqEl.btnEditCancel()?.addEventListener("click", closeDeqQsEditModal);
+  deqEl.btnEditCancel2()?.addEventListener("click", closeDeqQsEditModal);
+  deqEl.btnEditSave()?.addEventListener("click", onDeqQsEditSave);
+  deqEl.btnEditAddItem()?.addEventListener("click", () => { _deqEditBuilderItems.push(""); renderDeqEditBuilder(); });
+  // Edit modal type cards
+  document.querySelectorAll("#deq-qs-edit-modal .qs-type-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const ctype = card.dataset.deqTypeEdit;
+      document.querySelectorAll("#deq-qs-edit-modal .qs-type-card").forEach((c) => c.classList.remove("qs-type-card--active"));
+      card.classList.add("qs-type-card--active");
+      const inp = document.getElementById("deq-qs-edit-ctype");
+      if (inp) inp.value = ctype;
+    });
+  });
+}
+
+// Initialise DEQ events after DOM ready
+document.addEventListener("DOMContentLoaded", bindDeqEvents);

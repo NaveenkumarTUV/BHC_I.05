@@ -389,7 +389,12 @@ async def upload_excel(request: Request, file: UploadFile = File(...)):
 @router.get("/clients/pending")
 async def get_pending_clients(request: Request):
     ensure_authenticated(request)
-    pending = list_pending_clients()
+    try:
+        pending = list_pending_clients()
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return {"count": 0, "clients": []}
+        raise
     return {"count": len(pending), "clients": pending}
 
 
@@ -538,8 +543,15 @@ async def update_status(body: UpdateStatusRequest, request: Request):
 @router.get("/dashboard")
 async def dashboard_data(request: Request):
     ensure_authenticated(request)
-    total = len(read_workflow_clients())
-    pending = len(list_pending_clients())
+    try:
+        total = len(read_workflow_clients())
+        pending = len(list_pending_clients())
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            total = 0
+            pending = 0
+        else:
+            raise
     return dashboard_summary(PROCESSED_DB_PATH, total_enquiries=total, pending=pending)
 
 
@@ -1022,6 +1034,45 @@ async def export_processed_clients(
     output_path = BHC_EXPORT_DIR / filename
 
     df = pd.DataFrame(rows)
+
+    # Define column order: ref no first, then client details; drop internal fields
+    ordered_cols = [
+        "reference_number",
+        "client_name",
+        "phone",
+        "property_type",
+        "area",
+        "quoted_amount",
+        "quote_generated_date",
+        "status",
+        "payment_status",
+        "remarks",
+        "timestamp",
+        "created_at",
+        "updated_at",
+    ]
+    # Only keep columns that actually exist in the DataFrame
+    export_cols = [c for c in ordered_cols if c in df.columns]
+    df = df[export_cols]
+
+    # Human-friendly header names
+    col_labels = {
+        "reference_number": "Reference Number",
+        "client_name": "Client Name",
+        "phone": "Phone",
+        "property_type": "Property Type",
+        "area": "Area (sq.ft)",
+        "quoted_amount": "Quoted Amount (₹)",
+        "quote_generated_date": "Quote Date",
+        "status": "Status",
+        "payment_status": "Payment Status",
+        "remarks": "Remarks",
+        "timestamp": "Enquiry Timestamp",
+        "created_at": "Created At",
+        "updated_at": "Updated At",
+    }
+    df.rename(columns={k: v for k, v in col_labels.items() if k in df.columns}, inplace=True)
+
     df.to_excel(output_path, index=False)
 
     return StreamingResponse(
