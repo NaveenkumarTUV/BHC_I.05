@@ -20,7 +20,7 @@ from backend.app.services.bhc_workflow_db import (
     next_quote_sequence_for_date,
     processed_lookup_by_key,
 )
-from backend.app.utils.paths import DATA_DIR, EXPORTS_DIR
+from backend.app.utils.paths import DATA_DIR
 
 DEFAULT_ENQUIRY_EXCEL_FILENAMES = (
     "Building Health Check – Inspection Request Form 1.xlsx",
@@ -30,7 +30,6 @@ DEFAULT_ENQUIRY_EXCEL_FILENAMES = (
 )
 LOCAL_ENQUIRY_EXCEL_PATH = DATA_DIR / "bhc_enquiries.xlsx"
 PROCESSED_DB_PATH = Path(BHC_PROCESSED_DB_PATH) if BHC_PROCESSED_DB_PATH else (DATA_DIR / "bhc_processed.db")
-BHC_EXPORT_DIR = EXPORTS_DIR / "bhc"
 
 # Cache for network drive Excel candidates to avoid slow I/O on every request
 _excel_candidates_cache: dict[str, Any] = {"candidates": None, "timestamp": 0.0}

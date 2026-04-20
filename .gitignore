@@ -14,6 +14,7 @@ PortableApp/
 build_portable.ps1
 run_portable.py
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *$py.class
 *.so

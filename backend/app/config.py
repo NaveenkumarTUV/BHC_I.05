@@ -52,6 +52,7 @@ def set_env_value(key: str, value: str) -> None:
 
 
 DATA_DIR_PATH = get_env("DATA_DIR_PATH", "")
+EXPORTS_BASE_PATH = get_env("EXPORTS_BASE_PATH", "")
 EXCEL_FILE_PATH = get_env("EXCEL_FILE_PATH", "")
 BHC_PROCESSED_DB_PATH = get_env("BHC_PROCESSED_DB_PATH", "")
 BHC_CONFIG_DB_PATH = get_env("BHC_CONFIG_DB_PATH", "")

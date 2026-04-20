@@ -111,7 +111,7 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
     TABLE_STRIPE = (245, 248, 252)
 
     # Locate logo
-    _logo_path = Path(__file__).resolve().parents[3] / "data" / "assests" / "tuv_logo.png"
+    _logo_path = Path(__file__).resolve().parents[3] / "data" / "assets" / "tuv_logo.png"
     if not _logo_path.exists():
         _logo_path = output_path.parent.parent / "tuv_logo.png"
     if not _logo_path.exists():

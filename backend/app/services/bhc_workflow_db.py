@@ -349,7 +349,6 @@ def dashboard_summary(db_path: Path, total_enquiries: int, pending: int) -> Dict
         float(r.get("quoted_amount") or 0)
         for r in rows
         if str(r.get("status", "")).lower() == "converted"
-        and str(r.get("payment_status", "")).lower() == "paid"
     )
     return {
         "total_enquiries": int(total_enquiries),

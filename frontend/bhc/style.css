@@ -80,26 +80,6 @@ body {
 
 ::selection { background: rgba(0,100,160,0.18); }
 
-.app-bg-shape {
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(100px);
-  z-index: -1;
-  pointer-events: none;
-}
-
-.shape-one {
-  top: -160px; left: -120px;
-  width: 480px; height: 480px;
-  background: rgba(0,100,160,0.06);
-}
-
-.shape-two {
-  right: -160px; bottom: -160px;
-  width: 420px; height: 420px;
-  background: rgba(0,163,224,0.05);
-}
-
 /* TOPBAR */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -739,7 +719,6 @@ body {
   display: flex; align-items: center; gap: 10px; letter-spacing: 0.01em;
   text-transform: uppercase; font-size: 12px; letter-spacing: 0.06em;
 }
-.card-body { padding: 22px; }
 .card-body { padding: 20px; }
 
 /* OVERVIEW */
@@ -1512,7 +1491,7 @@ body {
   .topbar, .app-footer, .section-nav, .hero-bar,
   .toast, .notification-center, .modal-overlay,
   .btn, .actions-row, .toolbar-row, .advanced-filters,
-  .sync-legend, .overview-grid, #detail-empty, .app-bg-shape,
+  .sync-legend, .overview-grid, #detail-empty,
   .topbar-profile, .profile-menu { display: none !important; }
   body { background: #fff; font-size: 12px; }
   .dashboard-wrap { max-width: 100%; padding: 0; }

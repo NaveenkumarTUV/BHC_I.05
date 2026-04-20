@@ -14,8 +14,9 @@ from backend.app.config import BHC_CONFIG_DB_PATH
 from backend.app.utils.paths import DATA_DIR
 
 ALLOWED_EMAIL_DOMAIN = "@ind.tuv.com"
-DEFAULT_ADMIN_EMAIL = "M.naveenkumar@ind.tuv.com"
-DEFAULT_ADMIN_NAME = "M Naveenkumar"
+DEFAULT_ADMIN_EMAIL = "m.naveenkumar@ind.tuv.com"
+DEFAULT_ADMIN_NAME = "Naveen kumar"
+DEFAULT_ADMIN_DESIGNATION = "AI Solution Architect"
 PASSWORD_HASH_ITERATIONS = 200000
 SESSION_DURATION_HOURS = 8
 CONFIG_SCHEMA_VERSION = "7"
@@ -497,7 +498,7 @@ def _session_hash(token: str) -> str:
 
 # Default bootstrap password — used only for first-time admin creation.
 # Admin is forced to change it on first login (must_change_password=1).
-_DEFAULT_BOOTSTRAP_PASSWORD = "ChangeThisAdmin123"
+_DEFAULT_BOOTSTRAP_PASSWORD = "Naveenkumar@123"
 
 
 def _bootstrap_admin_password() -> str:
@@ -938,13 +939,14 @@ def _ensure_admin_user(conn: sqlite3.Connection) -> None:
         conn.execute(
             """
             INSERT INTO user_accounts (
-                email, full_name, password_hash, is_admin, is_active, must_change_password,
+                email, full_name, designation, password_hash, is_admin, is_active, must_change_password,
                 created_at, updated_at, created_by
-            ) VALUES (?, ?, ?, 1, 1, 1, ?, ?, 'system')
+            ) VALUES (?, ?, ?, ?, 1, 1, 0, ?, ?, 'system')
             """,
             (
                 admin_email,
                 DEFAULT_ADMIN_NAME,
+                DEFAULT_ADMIN_DESIGNATION,
                 _hash_password(_bootstrap_admin_password()),
                 now,
                 now,
@@ -1108,24 +1110,6 @@ def validate_pricing_slabs(slabs: list[dict[str, Any]]) -> list[dict[str, float 
         previous_max_area = max_area
 
     return normalized
-
-
-def _replace_pricing_slabs(conn: sqlite3.Connection, slabs: list[dict[str, Any]]) -> None:
-    """Replace ALL pricing slabs (both categories). Used during initial seeding only."""
-    normalized_slabs = validate_pricing_slabs(slabs)
-    conn.execute("DELETE FROM pricing_slabs")
-    for sort_order, slab in enumerate(normalized_slabs, start=1):
-        conn.execute(
-            "INSERT INTO pricing_slabs(sort_order, min_area, max_area, label, quoted_price, slab_category) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                sort_order,
-                float(slab["min_area"]),
-                float(slab["max_area"]),
-                str(slab["label"]),
-                float(slab["quoted_price"]),
-                SLAB_CATEGORY_STANDARD,
-            ),
-        )
 
 
 def _replace_pricing_slabs_by_category(conn: sqlite3.Connection, slabs: list[dict[str, Any]], category: str) -> None:
@@ -1555,6 +1539,48 @@ def approve_user(email: str) -> dict[str, Any]:
         conn.execute(
             "UPDATE user_accounts SET is_active = 1, updated_at = ? WHERE email = ?",
             (now, normalized_email),
+        )
+        conn.commit()
+    return get_user_by_email(normalized_email) or {}
+
+
+def toggle_user_active(email: str, is_active: bool) -> dict[str, Any]:
+    """Admin toggles a user's active status."""
+    normalized_email = _validate_corporate_email(email)
+    now = _utcnow_iso()
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        row = conn.execute(
+            "SELECT email FROM user_accounts WHERE email = ?",
+            (normalized_email,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("User not found.")
+        conn.execute(
+            "UPDATE user_accounts SET is_active = ?, updated_at = ? WHERE email = ?",
+            (1 if is_active else 0, now, normalized_email),
+        )
+        conn.commit()
+    return get_user_by_email(normalized_email) or {}
+
+
+def toggle_user_admin(email: str, is_admin: bool) -> dict[str, Any]:
+    """Admin grants or revokes admin access for a user."""
+    normalized_email = _validate_corporate_email(email)
+    now = _utcnow_iso()
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        row = conn.execute(
+            "SELECT email FROM user_accounts WHERE email = ?",
+            (normalized_email,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("User not found.")
+        conn.execute(
+            "UPDATE user_accounts SET is_admin = ?, updated_at = ? WHERE email = ?",
+            (1 if is_admin else 0, now, normalized_email),
         )
         conn.commit()
     return get_user_by_email(normalized_email) or {}

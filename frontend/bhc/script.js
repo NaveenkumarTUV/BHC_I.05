@@ -169,7 +169,6 @@ const el = {
   btnAddNewBuildingPricingRow: () => document.getElementById("btn-add-new-building-pricing-row"),
   btnSavePricing: () => document.getElementById("btn-save-pricing"),
   btnSaveDocument: () => document.getElementById("btn-save-document"),
-  btnCreateUser: () => document.getElementById("btn-create-user"),
   adminPricingBody: () => document.getElementById("admin-pricing-body"),
   adminNewBuildingPricingBody: () => document.getElementById("admin-new-building-pricing-body"),
   adminUsersBody: () => document.getElementById("admin-users-body"),
@@ -196,14 +195,6 @@ const el = {
   adminPaymentTerms: () => document.getElementById("admin-payment-terms"),
   adminOtherTerms: () => document.getElementById("admin-other-terms"),
   adminSystemNote: () => document.getElementById("admin-system-note"),
-  adminUserFullName: () => document.getElementById("admin-user-full-name"),
-  adminUserDesignation: () => document.getElementById("admin-user-designation"),
-  adminUserEmail: () => document.getElementById("admin-user-email"),
-  adminUserPassword: () => document.getElementById("admin-user-password"),
-  adminUserSignature: () => document.getElementById("admin-user-signature"),
-  adminUserIsAdmin: () => document.getElementById("admin-user-is-admin"),
-
-
 
   // Scope of Work admin
   btnSaveScope: () => document.getElementById("btn-save-scope"),
@@ -1267,31 +1258,48 @@ async function loadAdminConfig() {
 function renderAdminUsers() {
   const body = el.adminUsersBody();
   const users = state.adminConfig?.users || [];
+  const currentEmail = state.session?.email || "";
+  const card = document.querySelector('[data-admin-section="users"]');
+  const isLocked = card?.classList.contains("admin-locked");
 
   if (!users.length) {
     body.innerHTML = '<tr><td colspan="8" class="muted">No users found.</td></tr>';
     return;
   }
 
-  body.innerHTML = users.map((user, index) => `
-    <tr>
+  body.innerHTML = users.map((user, index) => {
+    const isSelf = user.email === currentEmail;
+    const statusHtml = isLocked
+      ? (user.is_active ? '<span class="sync-pill saved">Active</span>' : '<span class="sync-pill dirty">Pending</span>')
+      : (user.is_active
+          ? `<button class="btn btn-sm btn-outline btn-status-toggle" data-user-deactivate="${index}" ${isSelf ? 'disabled title="Cannot deactivate yourself"' : ''} style="color:var(--err);border-color:var(--err)">Deactivate</button>`
+          : `<button class="btn btn-sm btn-primary" data-user-approve="${index}">Approve</button>`);
+    const roleHtml = isLocked
+      ? (user.is_admin ? '<span class="sync-pill saving">Admin</span>' : '<span class="sync-pill saved">User</span>')
+      : `<select data-user-role="${index}" class="search-input" style="max-width:100px;padding:4px 8px;font-size:12px" ${isSelf ? 'disabled title="Cannot change own role"' : ''}>
+           <option value="0" ${!user.is_admin ? 'selected' : ''}>User</option>
+           <option value="1" ${user.is_admin ? 'selected' : ''}>Admin</option>
+         </select>`;
+    const actionsHtml = isLocked
+      ? ''
+      : `<div class="inline-reset-row">
+          <input type="password" data-user-reset-index="${index}" class="search-input" placeholder="Temp password" style="max-width:130px" />
+          <button class="btn btn-sm btn-outline" data-user-reset-button="${index}">Reset</button>
+        </div>`;
+
+    return `<tr>
       <td>${escHtml(user.email)}</td>
       <td>${escHtml(user.full_name)}</td>
       <td>${escHtml(user.designation || "—")}</td>
       <td>${user.has_signature ? '<span class="sync-pill saved">Uploaded</span>' : `<label class="btn btn-sm btn-outline" style="cursor:pointer"><input type="file" accept=".png,.jpg,.jpeg" data-sig-upload="${index}" hidden />Upload</label>`}</td>
-      <td>${user.is_admin ? '<span class="sync-pill saving">Admin</span>' : '<span class="sync-pill saved">User</span>'}</td>
-      <td>${user.is_active ? '<span class="sync-pill saved">Active</span>' : '<span class="sync-pill dirty">Pending</span>'}</td>
+      <td>${roleHtml}</td>
+      <td>${statusHtml}</td>
       <td>${user.must_change_password ? '<span class="sync-pill dirty">Must change</span>' : '<span class="sync-pill saved">OK</span>'}</td>
-      <td>
-        <div class="inline-reset-row">
-          ${!user.is_active ? `<button class="btn btn-sm btn-primary" data-user-approve="${index}">Approve</button>` : ''}
-          <input type="password" data-user-reset-index="${index}" class="search-input" placeholder="Temp password" style="max-width:130px" />
-          <button class="btn btn-sm btn-outline" data-user-reset-button="${index}">Reset</button>
-        </div>
-      </td>
-    </tr>
-  `).join("");
+      <td>${actionsHtml}</td>
+    </tr>`;
+  }).join("");
 
+  // Signature upload
   body.querySelectorAll("input[data-sig-upload]").forEach((input) => {
     input.addEventListener("change", async () => {
       const index = Number(input.dataset.sigUpload);
@@ -1316,6 +1324,7 @@ function renderAdminUsers() {
     });
   });
 
+  // Approve (pending → active)
   body.querySelectorAll("button[data-user-approve]").forEach((button) => {
     button.addEventListener("click", async () => {
       const index = Number(button.dataset.userApprove);
@@ -1335,6 +1344,50 @@ function renderAdminUsers() {
     });
   });
 
+  // Deactivate (active → inactive)
+  body.querySelectorAll("button[data-user-deactivate]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const index = Number(button.dataset.userDeactivate);
+      const user = users[index];
+      if (!confirm(`Deactivate ${user.email}? They will no longer be able to log in.`)) return;
+      try {
+        await api("/api/bhc/admin/users/toggle-active", {
+          method: "POST",
+          body: JSON.stringify({ email: user.email, is_active: false }),
+        });
+        await loadAdminConfig();
+        setAdminFeedback(`User ${user.email} deactivated.`, "success");
+        toast(`${user.email} deactivated`, "success");
+      } catch (err) {
+        setAdminFeedback(err.message, "error");
+        toast(err.message, "error");
+      }
+    });
+  });
+
+  // Role toggle (admin ↔ user)
+  body.querySelectorAll("select[data-user-role]").forEach((select) => {
+    select.addEventListener("change", async () => {
+      const index = Number(select.dataset.userRole);
+      const user = users[index];
+      const isAdmin = select.value === "1";
+      try {
+        await api("/api/bhc/admin/users/toggle-admin", {
+          method: "POST",
+          body: JSON.stringify({ email: user.email, is_admin: isAdmin }),
+        });
+        await loadAdminConfig();
+        const role = isAdmin ? "Admin" : "User";
+        setAdminFeedback(`${user.email} role set to ${role}.`, "success");
+        toast(`${user.email} → ${role}`, "success");
+      } catch (err) {
+        setAdminFeedback(err.message, "error");
+        toast(err.message, "error");
+      }
+    });
+  });
+
+  // Password reset
   body.querySelectorAll("button[data-user-reset-button]").forEach((button) => {
     button.addEventListener("click", async () => {
       const index = Number(button.dataset.userResetButton);
@@ -2380,52 +2433,6 @@ async function onSavePricing() {
   }
 }
 
-async function onCreateUser() {
-  const payload = {
-    full_name: el.adminUserFullName().value.trim(),
-    email: el.adminUserEmail().value.trim(),
-    password: el.adminUserPassword().value,
-    is_admin: el.adminUserIsAdmin().checked,
-    designation: el.adminUserDesignation().value.trim(),
-  };
-
-  if (!payload.full_name || !payload.email || !payload.password) {
-    setAdminFeedback("Full name, email, and temporary password are required to create a user.", "error");
-    return;
-  }
-
-  try {
-    setAdminFeedback("Creating user...", "info");
-    await api("/api/bhc/admin/users", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    // Upload signature if provided
-    const sigFile = el.adminUserSignature().files?.[0];
-    if (sigFile) {
-      const form = new FormData();
-      form.append("file", sigFile);
-      // Note: signature is tied to the currently logged-in user's session.
-      // For new users, admin can upload via the table after creation.
-    }
-
-    el.adminUserFullName().value = "";
-    el.adminUserDesignation().value = "";
-    el.adminUserEmail().value = "";
-    el.adminUserPassword().value = "";
-    el.adminUserSignature().value = "";
-    el.adminUserIsAdmin().checked = false;
-    await loadAdminConfig();
-    setAdminFeedback("User created successfully.", "success");
-    toast("User created", "success");
-    lockAdminSection("users");
-  } catch (err) {
-    setAdminFeedback(err.message, "error");
-    toast(err.message, "error");
-  }
-}
-
 function onAddPricingRow() {
   if (!state.adminConfig?.pricing?.slabs) {
     state.adminConfig = state.adminConfig || {};
@@ -2475,6 +2482,14 @@ function lockAdminSection(section) {
   const card = document.querySelector(`[data-admin-section="${section}"]`);
   if (!card) return;
   card.classList.add("admin-locked");
+  if (section === "users") {
+    renderAdminUsers();
+    const editBtn = card.querySelector('[data-edit-section="users"]');
+    const cancelBtn = card.querySelector('[data-cancel-section="users"]');
+    if (editBtn) editBtn.classList.remove("hidden");
+    if (cancelBtn) cancelBtn.classList.add("hidden");
+    return;
+  }
   card.querySelectorAll("input, textarea, select").forEach(el => {
     el.disabled = true;
     el.classList.add("admin-disabled");
@@ -2493,6 +2508,14 @@ function unlockAdminSection(section) {
   const card = document.querySelector(`[data-admin-section="${section}"]`);
   if (!card) return;
   card.classList.remove("admin-locked");
+  if (section === "users") {
+    renderAdminUsers();
+    const editBtn = card.querySelector('[data-edit-section="users"]');
+    const cancelBtn = card.querySelector('[data-cancel-section="users"]');
+    if (editBtn) editBtn.classList.add("hidden");
+    if (cancelBtn) cancelBtn.classList.remove("hidden");
+    return;
+  }
   card.querySelectorAll("input, textarea, select").forEach(el => {
     el.disabled = false;
     el.classList.remove("admin-disabled");
@@ -2664,7 +2687,6 @@ async function init() {
   el.btnSavePricing().addEventListener("click", onSavePricing);
   el.btnAddPricingRow().addEventListener("click", onAddPricingRow);
   el.btnAddNewBuildingPricingRow().addEventListener("click", onAddNewBuildingPricingRow);
-  el.btnCreateUser().addEventListener("click", onCreateUser);
   el.btnSaveScope().addEventListener("click", onSaveScope);
   el.btnSaveQSections().addEventListener("click", onSaveQSections);
   el.btnAddQs().addEventListener("click", _openQsAddModal);

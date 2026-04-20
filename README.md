@@ -29,11 +29,10 @@ An internal web application that manages the full lifecycle of BHC and DEQ enqui
    - [How Data Flows Through the App](#36-how-data-flows-through-the-app)
    - [Database Design](#37-database-design)
    - [API Reference](#38-api-reference)
-   - [Running Tests](#39-running-tests)
-   - [Common Development Tasks](#310-common-development-tasks)
-   - [Enabling / Disabling the DEQ Module](#311-enabling--disabling-the-deq-module)
-   - [Debugging Tips](#312-debugging-tips)
-   - [Contributing a Fix or Feature](#313-contributing-a-fix-or-feature)
+   - [Common Development Tasks](#39-common-development-tasks)
+   - [Enabling / Disabling the DEQ Module](#310-enabling--disabling-the-deq-module)
+   - [Debugging Tips](#311-debugging-tips)
+   - [Contributing a Fix or Feature](#312-contributing-a-fix-or-feature)
 4. [Security Notes](#4-security-notes)
 5. [Known Limitations](#5-known-limitations)
 6. [Changelog](#6-changelog)
@@ -285,7 +284,8 @@ Same premium interface as BHC, but manages the sections used in DEQ quotation PD
 #### User Management
 - View all registered users and their approval status
 - **Approve** pending registration requests
-- **Create** a new user account directly (admin-created accounts require password change on first login)
+- **Deactivate** or **reactivate** existing user accounts
+- **Toggle admin access** for any user (cannot change your own role)
 - **Reset password** for any user
 
 #### Audit Log
@@ -341,9 +341,8 @@ pip install -r backend\requirements.txt
 ```
 
 **Step 5 — Create the environment file**
-```powershell
-Copy-Item backend\.env.example .env
-```
+
+Create a `.env` file in the project root. See [Section 3.3](#33-configure-environment) for the required variables.
 
 ---
 
@@ -363,6 +362,11 @@ BHC_CONFIG_DB_PATH=
 # Data directory override (default: data/)
 DATA_DIR_PATH=
 
+# Exports directory override (network drive recommended)
+# Exports are organised as: <path>/bhc/YYYY/MM/ and <path>/deq/YYYY/MM/
+# Leave blank to use data/exports/ as fallback
+EXPORTS_BASE_PATH=I:\Bangalore\INDUSTRY\MTL-AI-Projects\Civil\exports
+
 # Server settings
 SERVER_HOST=127.0.0.1
 SERVER_PORT=7860
@@ -380,6 +384,7 @@ ALLOWED_ORIGINS=*
 | `BHC_PROCESSED_DB_PATH` | `data/bhc_processed.db` | Override path for the workflow SQLite database |
 | `BHC_CONFIG_DB_PATH` | `data/bhc_config.db` | Override path for the config SQLite database |
 | `DATA_DIR_PATH` | `data/` | Override for the data directory root |
+| `EXPORTS_BASE_PATH` | `data/exports/` | Override for exports root (network drive). Auto-creates `bhc/YYYY/MM/` and `deq/YYYY/MM/` sub-folders |
 | `SERVER_HOST` | `127.0.0.1` | Bind address for uvicorn |
 | `SERVER_PORT` | `7860` | Port for uvicorn |
 | `DEBUG_MODE` | `false` | Enable verbose logging |
@@ -412,11 +417,7 @@ Open your browser and go to:
 
 The `--reload` flag means the server restarts automatically every time you save a Python file — useful during development.
 
-**Default admin login (first run):**
-- Email: `M.naveenkumar@ind.tuv.com`
-- Password: `ChangeThisAdmin123`
-- You will be forced to change the password on first login.
-
+*
 ---
 
 ### 3.5 Project Structure Explained
@@ -429,8 +430,7 @@ Quotation_Generator/
 │
 ├── backend/
 │   ├── __init__.py
-│   ├── .env.example                ← Template for .env — commit this, not .env
-│   ├── requirements.txt            ← Python package list (19 packages)
+│   ├── requirements.txt            ← Python package list (11 packages)
 │   └── app/
 │       ├── __init__.py
 │       ├── main.py                 ← FastAPI app factory, startup, middleware, static mount
@@ -461,17 +461,10 @@ Quotation_Generator/
 │       └── style.css               ← All styling (~2000 lines, CSS custom properties)
 │
 ├── data/
-│   ├── assests/                    ← Static assets (tuv_logo.png for PDFs)
+│   ├── assets/                    ← Static assets (tuv_logo.png for PDFs)
 │   └── exports/
-│       ├── bhc/                    ← Generated BHC PDFs, email drafts, Excel exports
-│       └── deq/                    ← Generated DEQ PDFs and Excel exports
-│
-└── backend/tests/
-    ├── test_config_db.py           ← DB init, company/document/pricing updates
-    ├── test_dashboard_summary.py   ← Revenue calculations, quote references
-    ├── test_pricing_engine.py      ← Slab pricing, overrides, structure types
-    ├── test_user_auth.py           ← Login, sessions, password change, reset
-    └── test_workflow_rules.py      ← Status/payment combination validation
+│       ├── bhc/YYYY/MM/            ← Generated BHC PDFs, email drafts, Excel exports (year/month folders)
+│       └── deq/YYYY/MM/            ← Generated DEQ PDFs and Excel exports (year/month folders)
 ```
 
 **Key rule:** The frontend (`index.html` / `script.js` / `style.css`) is **pure vanilla JS** — no build tools, no npm, no webpack. You edit the file and refresh the browser. That's it.
@@ -612,8 +605,9 @@ Full interactive docs are available at: http://127.0.0.1:7860/docs
 | Method | Path | Description |
 |---|---|---|
 | GET | `/admin/users` | List all users |
-| POST | `/admin/users` | Create user (admin-created) |
 | POST | `/admin/users/approve` | Approve a pending registration |
+| POST | `/admin/users/toggle-active` | Activate or deactivate a user |
+| POST | `/admin/users/toggle-admin` | Grant or revoke admin access |
 | POST | `/admin/users/reset-password` | Force reset user password |
 | GET | `/admin/audit-events` | Audit log |
 
@@ -651,42 +645,10 @@ Full interactive docs are available at: http://127.0.0.1:7860/docs
 
 ---
 
-### 3.9 Running Tests
-
-The test suite has **19 tests** across 5 files. All use isolated temporary SQLite databases — no shared state.
-
-```powershell
-# Run all tests
-.\.venv\Scripts\Activate.ps1
-python -m pytest backend\tests -v
-
-# Run a specific test file
-python -m pytest backend\tests\test_pricing_engine.py -v
-
-# Run tests with output visible (useful for debugging)
-python -m pytest backend\tests -v -s
-```
-
-Expected output: `19 passed` in under 15 seconds.
-
-**What each test file covers:**
-
-| File | Tests |
-|---|---|
-| `test_config_db.py` | DB initialization, defaults, company/document/pricing CRUD |
-| `test_dashboard_summary.py` | Revenue calculations, daily quote reference numbering |
-| `test_pricing_engine.py` | Slab boundaries, override price, RCC/Steel/Both structure types |
-| `test_user_auth.py` | Bootstrap admin, session creation, password change, security Q reset |
-| `test_workflow_rules.py` | Valid and invalid status + payment combinations |
-
-**Always run tests before pushing any change.** If a test fails after your edit, fix it before committing.
-
----
-
-### 3.10 Common Development Tasks
+### 3.9 Common Development Tasks
 
 #### Add a new environment variable
-1. Add the key to `backend/.env.example` with a comment explaining it
+1. Add the key to your `.env` file
 2. Read it in `backend/app/config.py` using `get_env()`
 3. Use the config constant wherever needed
 
@@ -731,7 +693,7 @@ Expected output: `19 passed` in under 15 seconds.
 
 ---
 
-### 3.11 Enabling / Disabling the DEQ Module
+### 3.10 Enabling / Disabling the DEQ Module
 
 The DEQ module is controlled by a single JavaScript flag at the top of the DEQ module section in `frontend/bhc/script.js`:
 
@@ -764,7 +726,7 @@ When **enabled** (`true`):
 
 ---
 
-### 3.12 Debugging Tips
+### 3.11 Debugging Tips
 
 **Server won't start**
 - Make sure the virtual environment is active: you should see `(.venv)` in the prompt
@@ -793,16 +755,12 @@ When **enabled** (`true`):
 - Most common cause: a JS error in `populateAdminForm()` due to a missing field in the API response
 
 **DEQ tab shows "Coming Soon" when it should be active**
-- Check that `DEQ_ENABLED = true` in `script.js` (see [Section 3.11](#311-enabling--disabling-the-deq-module))
+- Check that `DEQ_ENABLED = true` in `script.js` (see [Section 3.10](#310-enabling--disabling-the-deq-module))
 - Hard-refresh the browser (Ctrl+F5) to ensure the latest JS is loaded
-
-**Test failures**
-- Run `python -m pytest backend\tests -v -s` to see full output
-- Tests use `tmp_path` (pytest fixture) for isolated DB files — they never touch your real `data/` folder
 
 ---
 
-### 3.13 Contributing a Fix or Feature
+### 3.12 Contributing a Fix or Feature
 
 1. **Create a branch** with a descriptive name:
    ```powershell
@@ -813,20 +771,15 @@ When **enabled** (`true`):
 
 2. **Make your changes.** Keep each commit focused on one thing.
 
-3. **Run all tests and make sure they pass:**
-   ```powershell
-   python -m pytest backend\tests -v
-   ```
+3. **Test your changes** manually through the UI and Swagger docs at http://127.0.0.1:7860/docs
 
-4. **Add a test** if you added new logic. Place it in the relevant test file or create a new one in `backend/tests/`.
-
-5. **Commit with a clear message:**
+4. **Commit with a clear message:**
    ```powershell
    git add .
    git commit -m "fix: handle rupee symbol in PDF safe encoder"
    ```
 
-6. **Push and open a pull request:**
+5. **Push and open a pull request:**
    ```powershell
    git push origin fix/pdf-encoding-issue
    ```
@@ -852,7 +805,7 @@ When **enabled** (`true`):
 - **SQL injection prevention:** All database queries use parameterized statements — no string concatenation in SQL.
 - **System sections are protected:** Default quotation sections (BHC and DEQ) cannot be deleted via the API — only custom sections can be deleted.
 - **Request IDs:** Every API response includes an `X-Request-ID` header (UUID) for tracing.
-- **Do not commit `.env`** — it is listed in `.gitignore`. Never put real credentials in `backend/.env.example`.
+- **Do not commit `.env`** — it is listed in `.gitignore`. Never put real credentials in committed files.
 
 ---
 

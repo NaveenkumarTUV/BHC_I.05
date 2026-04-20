@@ -26,11 +26,6 @@ def require_authenticated_user(request: Request) -> dict:
     return user
 
 
-def has_admin_access(request: Request) -> bool:
-    user = get_current_user(request)
-    return bool(user and user.get("is_admin"))
-
-
 def require_admin_user(request: Request) -> dict:
     user = require_authenticated_user(request)
     if not user.get("is_admin"):

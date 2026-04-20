@@ -1,8 +1,9 @@
 import sys
+from datetime import datetime
 from pathlib import Path
 
-# Load environment variable for data directory
-from backend.app.config import DATA_DIR_PATH
+# Load environment variables
+from backend.app.config import DATA_DIR_PATH, EXPORTS_BASE_PATH
 
 
 def get_base_path():
@@ -60,6 +61,41 @@ APP_DIR = BASE_DIR / "backend" / "app"
 DATA_DIR = get_data_dir()
 FRONTEND_DIR = BASE_DIR / "frontend"
 EXPORTS_DIR = DATA_DIR / "exports"
+
+
+def _resolve_exports_base() -> Path:
+    """
+    Return the base exports directory.
+    Uses EXPORTS_BASE_PATH from .env if set and reachable,
+    otherwise falls back to DATA_DIR/exports.
+    """
+    if EXPORTS_BASE_PATH:
+        p = Path(EXPORTS_BASE_PATH)
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        except (OSError, FileNotFoundError):
+            import warnings
+            warnings.warn(
+                f"EXPORTS_BASE_PATH '{EXPORTS_BASE_PATH}' is inaccessible. "
+                f"Falling back to local exports directory.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+    return EXPORTS_DIR
+
+
+def get_dated_export_dir(module: str) -> Path:
+    """
+    Return an export directory organised by year and month.
+    Example: <exports_base>/<module>/2026/04/
+    Directories are created automatically.
+    """
+    now = datetime.now()
+    target = _resolve_exports_base() / module / str(now.year) / f"{now.month:02d}"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
 
 def ensure_dir(path: Path) -> Path:
     """Create a directory if it does not exist and return the path."""

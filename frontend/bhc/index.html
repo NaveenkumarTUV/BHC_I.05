@@ -657,45 +657,15 @@
             </div>
             <div class="admin-card-meta">
               <h3>User Access</h3>
-              <p>Create accounts and manage user roles and permissions</p>
+              <p>Approve registrations and manage user roles and permissions</p>
             </div>
             <div class="admin-card-actions">
               <button class="btn btn-outline btn-admin-edit admin-only" data-edit-section="users">Edit</button>
               <button class="btn btn-outline btn-admin-cancel hidden" data-cancel-section="users">Cancel</button>
-              <button id="btn-create-user" class="btn btn-primary hidden">Create User</button>
             </div>
           </div>
           <div class="admin-card-body">
-            <div class="admin-section-grid">
-              <label>
-                <span>Full Name</span>
-                <input type="text" id="admin-user-full-name" class="search-input" />
-              </label>
-              <label>
-                <span>Designation</span>
-                <input type="text" id="admin-user-designation" class="search-input" placeholder="e.g. Senior Engineer - Civil" />
-              </label>
-              <label>
-                <span>Email</span>
-                <input type="email" id="admin-user-email" class="search-input" placeholder="name@ind.tuv.com" />
-              </label>
-              <label>
-                <span>Temporary Password</span>
-                <input type="password" id="admin-user-password" class="search-input" />
-              </label>
-              <label>
-                <span>Signature Image (PNG/JPG, max 500KB)</span>
-                <input type="file" id="admin-user-signature" class="search-input" accept=".png,.jpg,.jpeg" />
-              </label>
-              <label class="admin-checkbox-row">
-                <span>Role</span>
-                <div class="checkbox-inline">
-                  <input type="checkbox" id="admin-user-is-admin" />
-                  <span>Grant admin access</span>
-                </div>
-              </label>
-            </div>
-            <div class="table-wrap admin-table-wrap top-gap">
+            <div class="table-wrap admin-table-wrap">
               <table class="data-table">
                 <thead>
                   <tr>
