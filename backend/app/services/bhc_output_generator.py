@@ -215,21 +215,61 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
             pdf.ln(1)
 
     def render_timeline_table(items: list):
-        pdf.set_font("Helvetica", "B", 8)
-        pdf.set_fill_color(*NAVY)
-        pdf.set_text_color(*WHITE)
-        pdf.cell(14, 6, "")
-        pdf.cell(15, 6, "  Sr.", fill=True, border=1)
-        pdf.cell(55, 6, "  Task", fill=True, border=1)
-        pdf.cell(86, 6, "  Duration", fill=True, border=1, ln=True)
-        pdf.set_text_color(*BLACK)
-        pdf.set_font("Helvetica", "", 8)
-        for task in items:
-            pdf.set_fill_color(*LIGHT_BG)
+        # Detect format: new multi-col with _col_headers, or legacy task/duration
+        headers = None
+        data_rows = list(items)
+        if data_rows and isinstance(data_rows[0], dict) and data_rows[0].get("_col_headers"):
+            hdr = data_rows[0]
+            if isinstance(hdr.get("headers"), list):
+                headers = [str(h) for h in hdr["headers"]]
+            else:
+                headers = [str(hdr.get("col1", "Column 1")), str(hdr.get("col2", "Column 2"))]
+            data_rows = data_rows[1:]
+
+        if headers is not None:
+            # ── Generic N-column table (no Sr. no.) ──
+            n = len(headers)
+            indent = 14
+            col_w = 156.0 / n
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_fill_color(*NAVY)
+            pdf.set_text_color(*WHITE)
+            pdf.cell(indent, 6, "")
+            for i, h in enumerate(headers):
+                pdf.cell(col_w, 6, f"  {_pdf_safe(h)}", fill=True, border=1, ln=(i == n - 1))
+            pdf.set_text_color(*BLACK)
+            pdf.set_font("Helvetica", "", 8)
+            for row in data_rows:
+                pdf.set_fill_color(*LIGHT_BG)
+                pdf.cell(indent, 6, "")
+                if isinstance(row.get("cells"), list):
+                    cells = row["cells"]
+                    for i in range(n):
+                        val = str(cells[i]) if i < len(cells) else ""
+                        pdf.cell(col_w, 6, f"  {_pdf_safe(val)}", fill=True, border=1, ln=(i == n - 1))
+                else:
+                    # Fallback: use task/duration keys for 2-col tables
+                    vals = [str(row.get("task", "")), str(row.get("duration", ""))]
+                    for i in range(n):
+                        val = vals[i] if i < len(vals) else ""
+                        pdf.cell(col_w, 6, f"  {_pdf_safe(val)}", fill=True, border=1, ln=(i == n - 1))
+        else:
+            # ── Legacy system timeline with Sr. no. column ──
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_fill_color(*NAVY)
+            pdf.set_text_color(*WHITE)
             pdf.cell(14, 6, "")
-            pdf.cell(15, 6, _pdf_safe(f"  {task.get('sr_no', '')}"), fill=True, border=1)
-            pdf.cell(55, 6, _pdf_safe(f"  {task.get('task', '')}"), fill=True, border=1)
-            pdf.cell(86, 6, _pdf_safe(f"  {task.get('duration', '')}"), fill=True, border=1, ln=True)
+            pdf.cell(15, 6, "  Sr.", fill=True, border=1)
+            pdf.cell(55, 6, "  Task", fill=True, border=1)
+            pdf.cell(86, 6, "  Duration", fill=True, border=1, ln=True)
+            pdf.set_text_color(*BLACK)
+            pdf.set_font("Helvetica", "", 8)
+            for task in data_rows:
+                pdf.set_fill_color(*LIGHT_BG)
+                pdf.cell(14, 6, "")
+                pdf.cell(15, 6, _pdf_safe(f"  {task.get('sr_no', '')}"), fill=True, border=1)
+                pdf.cell(55, 6, _pdf_safe(f"  {task.get('task', '')}"), fill=True, border=1)
+                pdf.cell(86, 6, _pdf_safe(f"  {task.get('duration', '')}"), fill=True, border=1, ln=True)
 
     # ── Dynamic section renderer for fees ──
 

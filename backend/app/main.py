@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.app.config import ALLOWED_ORIGINS, validate_runtime_config
 from backend.app.routes.bhc_routes import router as bhc_router
+from backend.app.routes.deq_routes import router as deq_router
 from backend.app.services.bhc_admin_auth import get_current_user
 from backend.app.services.bhc_config_db import ALLOWED_EMAIL_DOMAIN, DEFAULT_ADMIN_EMAIL, init_config_db
 from backend.app.services.bhc_workflow_service import initialize_workflow_storage
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
         ensure_dir(DATA_DIR)
         ensure_dir(EXPORTS_DIR)
         ensure_dir(EXPORTS_DIR / "bhc")
+        ensure_dir(EXPORTS_DIR / "deq")
         initialize_workflow_storage()
         init_config_db()
         LOGGER.info("Startup completed.")
@@ -55,6 +57,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(bhc_router)
+    app.include_router(deq_router)
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/bhc/style.css?v=20260415b" />
+  <link rel="stylesheet" href="/bhc/style.css?v=20260420k" />
 </head>
 <body>
 
@@ -210,12 +210,39 @@
             </label>
             <label class="auth-field">
               <span>Password</span>
-              <input type="password" id="reg-password" class="auth-input" placeholder="Min 8 characters" autocomplete="new-password" />
+              <div class="auth-password-wrap">
+                <input type="password" id="reg-password" class="auth-input" placeholder="Create a strong password" autocomplete="new-password" />
+                <button class="auth-pw-toggle" type="button" data-target="reg-password" aria-label="Show password">
+                  <svg id="reg-pw-eye-show" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg id="reg-pw-eye-hide" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
             </label>
             <label class="auth-field">
               <span>Confirm Password</span>
-              <input type="password" id="reg-confirm-password" class="auth-input" placeholder="Re-enter password" autocomplete="new-password" />
+              <div class="auth-password-wrap">
+                <input type="password" id="reg-confirm-password" class="auth-input" placeholder="Re-enter your password" autocomplete="new-password" />
+                <button class="auth-pw-toggle" type="button" data-target="reg-confirm-password" aria-label="Show confirm password">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+              </div>
             </label>
+            <div id="reg-password-policy" class="reg-policy-panel">
+              <div class="reg-policy-header">
+                <span class="reg-policy-title">Password Requirements</span>
+                <span id="reg-strength-label" class="reg-strength-label"></span>
+              </div>
+              <div class="reg-strength-bar"><div id="reg-strength-fill" class="reg-strength-fill"></div></div>
+              <ul class="reg-policy-list">
+                <li id="reg-policy-length">At least 8 characters</li>
+                <li id="reg-policy-upper">One uppercase letter (A–Z)</li>
+                <li id="reg-policy-lower">One lowercase letter (a–z)</li>
+                <li id="reg-policy-digit">One number (0–9)</li>
+                <li id="reg-policy-special">One special character (@&nbsp;#&nbsp;!&nbsp;$&nbsp;…)</li>
+                <li id="reg-policy-match">Passwords match</li>
+              </ul>
+            </div>
             <label class="auth-field">
               <span>Security Question</span>
               <select id="reg-security-question" class="auth-input">
@@ -270,7 +297,8 @@
       <button class="section-tab active" data-tab="overview">Home</button>
       <button class="section-tab" data-tab="enquiries">New Enquiries</button>
       <button class="section-tab" data-tab="studio">Quote Studio</button>
-      <button class="section-tab" data-tab="pipeline">Pipeline</button>
+      <button class="section-tab" data-tab="pipeline">BHC Pipeline</button>
+      <button class="section-tab" data-tab="deq">DEQ</button>
       <button class="section-tab" data-tab="admin">Admin</button>
     </section>
 
@@ -462,15 +490,23 @@
               <select id="processed-property-filter" class="filter-select">
                 <option value="all">All Property Types</option>
               </select>
-              <input type="date" id="processed-date-from" class="search-input" />
-              <input type="date" id="processed-date-to" class="search-input" />
+              <div class="date-field-wrap">
+                <label class="date-field-label" for="processed-date-from">From</label>
+                <input type="date" id="processed-date-from" class="search-input date-field-input" />
+                <button type="button" class="date-clear-btn" data-target="processed-date-from" title="Clear date" aria-label="Clear from date">&times;</button>
+              </div>
+              <div class="date-field-wrap">
+                <label class="date-field-label" for="processed-date-to">To</label>
+                <input type="date" id="processed-date-to" class="search-input date-field-input" />
+                <button type="button" class="date-clear-btn" data-target="processed-date-to" title="Clear date" aria-label="Clear to date">&times;</button>
+              </div>
             </div>
           </details>
           <div class="table-wrap">
             <table class="data-table" id="processed-table">
               <thead>
                 <tr>
-                  <th>Enquiry ID</th>
+                  <th>Ref. No.</th>
                   <th>Name</th>
                   <th>Phone</th>
                   <th>Area</th>
@@ -551,7 +587,7 @@
               </label>
               <label>
                 <span>Urgency Surcharge %</span>
-                <input type="number" id="admin-urgency-surcharge" class="search-input" min="0" max="100" step="0.1" />
+                <input type="number" id="admin-urgency-surcharge" class="search-input" min="0" max="100" step="any" placeholder="e.g. 10 (enter 0 to disable)" />
               </label>
               <label>
                 <span>GST %</span>
@@ -911,10 +947,8 @@
 
                 <!-- Table builder -->
                 <div id="qs-builder-table" class="qs-builder hidden">
-                  <div class="qs-tbl-header">
-                    <span style="flex:2">Task / Activity</span>
-                    <span style="flex:1">Duration</span>
-                    <span style="width:32px"></span>
+                  <div class="qs-tbl-header qs-tbl-header--editable" id="qs-tbl-header">
+                    <!-- dynamically populated by _qsRenderTableHeader() -->
                   </div>
                   <div id="qs-table-rows" class="qs-builder-items"></div>
                   <button type="button" id="btn-qs-add-row" class="btn btn-outline btn-sm" style="width:100%;margin-top:8px;border-style:dashed">
@@ -985,6 +1019,181 @@
       <div id="admin-feedback" class="feedback hidden"></div>
     </section>
 
+    <!-- DEQ Tab Panel -->
+    <section class="tab-panel" id="tab-deq">
+
+      <!-- Coming Soon Screen (visible when DEQ_ENABLED = false in script.js) -->
+      <div id="deq-coming-soon" class="deq-coming-soon">
+        <div class="deq-cs-card animate-rise">
+          <div class="deq-cs-badge">Coming Soon</div>
+          <div class="deq-cs-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"/>
+            </svg>
+          </div>
+          <h2 class="deq-cs-title">Detailed Examination Quotation</h2>
+          <p class="deq-cs-subtitle">A purpose-built follow-up quotation module that links in-depth technical examinations to their originating Building Health Check-Up (BHC) assessments.</p>
+          <div class="deq-cs-what">
+            <div class="deq-cs-what-title">How it works</div>
+            <div class="deq-cs-steps">
+              <div class="deq-cs-step">
+                <div class="deq-cs-step-num">1</div>
+                <div>A BHC assessment identifies specific issues &#8212; cracks, structural defects, electrical faults or water seepage</div>
+              </div>
+              <div class="deq-cs-step">
+                <div class="deq-cs-step-num">2</div>
+                <div>A DEQ quotation is raised, linked to that BHC record, for a deeper examination of the identified issues</div>
+              </div>
+              <div class="deq-cs-step">
+                <div class="deq-cs-step-num">3</div>
+                <div>The DEQ module tracks its own pipeline, statuses, payments and generates a branded quotation PDF</div>
+              </div>
+            </div>
+          </div>
+          <div class="deq-cs-note">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Module is disabled. Set <code style="font-family:monospace;background:#e8e3ff;padding:1px 6px;border-radius:4px;color:#7c3aed">DEQ_ENABLED = true</code> in script.js to activate.
+          </div>
+        </div>
+      </div>
+
+      <!-- DEQ Main Content (shown when DEQ_ENABLED = true) -->
+      <div id="deq-tab-body" class="hidden">
+
+        <!-- Stats row -->
+        <div class="metrics-grid">
+          <article class="metric-card animate-rise">
+            <div class="metric-label">Total DEQs</div>
+            <div class="metric-value" id="deq-m-total">0</div>
+          </article>
+          <article class="metric-card animate-rise">
+            <div class="metric-label">Converted</div>
+            <div class="metric-value" id="deq-m-converted">0</div>
+          </article>
+          <article class="metric-card animate-rise">
+            <div class="metric-label">Total Quoted</div>
+            <div class="metric-value" id="deq-m-revenue">&#8377; 0</div>
+          </article>
+          <article class="metric-card animate-rise">
+            <div class="metric-label">Paid Revenue</div>
+            <div class="metric-value" id="deq-m-paid">&#8377; 0</div>
+          </article>
+        </div>
+
+        <!-- New DEQ Quotation -->
+        <section class="card">
+          <div class="card-header">New Detailed Examination Quotation</div>
+          <div class="card-body">
+            <div class="toolbar-row">
+              <select id="deq-bhc-select" class="filter-select" style="min-width:320px">
+                <option value="">&#8212; Select Linked BHC Record (optional) &#8212;</option>
+              </select>
+            </div>
+            <div class="toolbar-row" id="deq-form-grid">
+              <input type="text" id="deq-client-name" class="search-input" placeholder="Client Name *" />
+              <input type="text" id="deq-phone" class="search-input" placeholder="Phone" />
+              <input type="text" id="deq-property-type" class="search-input" placeholder="Property Type" />
+              <input type="number" id="deq-area" class="search-input" placeholder="Area (sq.ft)" min="0" />
+            </div>
+            <div class="toolbar-row">
+              <select id="deq-exam-type" class="filter-select">
+                <option value="Structural">Structural</option>
+                <option value="Electrical">Electrical</option>
+                <option value="Plumbing">Plumbing</option>
+                <option value="Fire Safety">Fire Safety</option>
+                <option value="Facade">Facade</option>
+                <option value="Comprehensive">Comprehensive</option>
+                <option value="Other">Other</option>
+              </select>
+              <input type="number" id="deq-amount" class="search-input" placeholder="DEQ Amount (excl. GST) *" min="0" step="0.01" />
+            </div>
+            <div class="toolbar-row">
+              <textarea id="deq-issue-description" class="search-input admin-textarea" rows="3" placeholder="Issues identified in BHC assessment..." style="width:100%"></textarea>
+            </div>
+            <div class="actions-row">
+              <button id="btn-create-deq" class="btn btn-primary">Create DEQ Quotation</button>
+              <button id="btn-deq-export" class="btn btn-outline">Export to Excel</button>
+            </div>
+            <div id="deq-form-feedback" class="feedback hidden"></div>
+            <div id="deq-created-ref" class="hidden" style="margin-top:10px;padding:10px;background:var(--teal-50,#f0fdfa);border-radius:6px;font-weight:600;color:var(--teal-700,#0f766e)"></div>
+          </div>
+        </section>
+
+        <!-- DEQ Pipeline -->
+        <section class="card">
+          <div class="card-header">DEQ Pipeline <span class="badge" id="deq-count">0</span></div>
+          <div class="card-body">
+            <div class="sync-legend" aria-label="Save state legend">
+              <span class="sync-pill saved">Saved in DB</span>
+              <span class="sync-pill saving">Saving&#8230;</span>
+              <span class="sync-pill error">Save failed</span>
+            </div>
+            <div class="toolbar-row">
+              <input type="text" id="deq-search" class="search-input" placeholder="Search DEQ records..." />
+              <select id="deq-status-filter" class="filter-select">
+                <option value="all">All Status</option>
+                <option value="Quoted">Quoted</option>
+                <option value="Converted">Converted</option>
+                <option value="Dropped">Dropped</option>
+              </select>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="deq-table">
+                <thead>
+                  <tr>
+                    <th>DEQ Ref</th>
+                    <th>BHC Ref</th>
+                    <th>Client</th>
+                    <th>Exam Type</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Payment</th>
+                    <th>Remarks</th>
+                    <th>Sync</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="deq-body">
+                  <tr><td colspan="10" class="muted">Loading&#8230;</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- DEQ Quotation Studio (admin only) -->
+        <section class="admin-card admin-card--purple" id="deq-studio-card">
+          <div class="admin-card-head">
+            <div class="admin-card-icon admin-card-icon--purple">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            </div>
+            <div class="admin-card-meta">
+              <h3>DEQ Quotation Sections</h3>
+              <p>Manage, reorder, show/hide and customise sections in the DEQ quotation PDF</p>
+            </div>
+            <div class="admin-card-actions">
+              <span class="badge badge-admin" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe">Admin Only</span>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            <div id="deq-studio-locked" class="hidden">
+              <p class="muted" style="padding:8px 0">Admin access required to manage DEQ sections.</p>
+            </div>
+            <div id="deq-studio-content" class="hidden">
+              <div id="deq-qs-list" class="qs-section-list"></div>
+              <div class="qs-add-row" style="margin-top:12px">
+                <button id="btn-add-deq-section" class="btn btn-primary" style="width:100%">+ Add New DEQ Section</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+      <!-- /DEQ Main Content -->
+
+    </section>
+    <!-- /DEQ Tab Panel -->
+
     </div>
   </main>
 
@@ -1027,6 +1236,136 @@
   <!-- Notification Center -->
   <div id="notification-center" class="notification-center"></div>
 
+  <!-- DEQ Add Section Modal -->
+  <div id="deq-qs-add-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card qs-add-card">
+      <div class="qs-add-header">
+        <div class="admin-card-icon admin-card-icon--purple">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <div>
+          <div class="modal-title" style="text-align:left">Add DEQ Section</div>
+          <p style="margin:0;font-size:12px;color:var(--slate-500);text-align:left">Create a custom section for the DEQ quotation PDF</p>
+        </div>
+        <button class="qs-add-close" id="btn-deq-qs-add-cancel" aria-label="Close">&times;</button>
+      </div>
+      <div class="qs-add-form">
+        <div class="qs-add-field">
+          <label class="qs-add-label">Section Heading <span style="color:#dc2626">*</span></label>
+          <input type="text" id="deq-qs-new-heading" class="search-input" placeholder="e.g. Examination Scope, Testing Protocol&#8230;" />
+          <span class="qs-add-hint">Appears as the section title in the DEQ quotation PDF</span>
+        </div>
+        <div class="qs-add-field">
+          <label class="qs-add-label">Content Type</label>
+          <div class="qs-type-cards">
+            <div class="qs-type-card qs-type-card--active" data-deq-type-add="list">
+              <div class="qs-type-icon-wrap">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+              </div>
+              <strong>Numbered List</strong>
+              <span>Items as 1, 2, 3&#8230;</span>
+            </div>
+            <div class="qs-type-card" data-deq-type-add="paragraph">
+              <div class="qs-type-icon-wrap">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="14" x2="15" y2="14"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+              </div>
+              <strong>Paragraphs</strong>
+              <span>Free-form text</span>
+            </div>
+            <div class="qs-type-card" data-deq-type-add="table">
+              <div class="qs-type-icon-wrap">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+              </div>
+              <strong>Table</strong>
+              <span>Two-column layout</span>
+            </div>
+          </div>
+          <input type="hidden" id="deq-qs-new-ctype" value="list" />
+        </div>
+        <div class="qs-add-field">
+          <label class="qs-add-label">Content</label>
+          <div class="qs-builder">
+            <div id="deq-qs-builder" class="qs-builder-items"></div>
+            <button type="button" id="btn-deq-qs-add-item" class="btn btn-outline btn-sm" style="width:100%;margin-top:8px;border-style:dashed">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Item
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="qs-add-actions">
+        <button id="btn-deq-qs-add-cancel2" class="btn btn-outline">Cancel</button>
+        <button id="btn-deq-qs-add-save" class="btn btn-primary">Add Section</button>
+      </div>
+      <div id="deq-qs-add-feedback" class="feedback hidden" style="margin:0 24px 12px"></div>
+    </div>
+  </div>
+
+  <!-- DEQ Edit Section Modal -->
+  <div id="deq-qs-edit-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card qs-add-card">
+      <div class="qs-add-header">
+        <div class="admin-card-icon admin-card-icon--purple">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </div>
+        <div>
+          <div class="modal-title" style="text-align:left">Edit DEQ Section</div>
+          <p style="margin:0;font-size:12px;color:var(--slate-500);text-align:left">Modify heading, content type and content of this section</p>
+        </div>
+        <button class="qs-add-close" id="btn-deq-qs-edit-cancel" aria-label="Close">&times;</button>
+      </div>
+      <div class="qs-add-form">
+        <div class="qs-add-field">
+          <label class="qs-add-label">Section Heading <span style="color:#dc2626">*</span></label>
+          <input type="text" id="deq-qs-edit-heading" class="search-input" placeholder="Section heading" />
+        </div>
+        <div class="qs-add-field">
+          <label class="qs-add-label">Content Type</label>
+          <div class="qs-type-cards">
+            <div class="qs-type-card qs-type-card--active" data-deq-type-edit="list">
+              <div class="qs-type-icon-wrap">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+              </div>
+              <strong>Numbered List</strong>
+              <span>Items as 1, 2, 3&#8230;</span>
+            </div>
+            <div class="qs-type-card" data-deq-type-edit="paragraph">
+              <div class="qs-type-icon-wrap">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="14" x2="15" y2="14"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+              </div>
+              <strong>Paragraphs</strong>
+              <span>Free-form text</span>
+            </div>
+            <div class="qs-type-card" data-deq-type-edit="table">
+              <div class="qs-type-icon-wrap">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+              </div>
+              <strong>Table</strong>
+              <span>Two-column layout</span>
+            </div>
+          </div>
+          <input type="hidden" id="deq-qs-edit-ctype" value="list" />
+        </div>
+        <div class="qs-add-field">
+          <label class="qs-add-label">Content</label>
+          <div class="qs-builder">
+            <div id="deq-qs-edit-builder" class="qs-builder-items"></div>
+            <button type="button" id="btn-deq-qs-edit-add-item" class="btn btn-outline btn-sm" style="width:100%;margin-top:8px;border-style:dashed">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Item
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="qs-add-actions">
+        <button id="btn-deq-qs-edit-cancel2" class="btn btn-outline">Cancel</button>
+        <button id="btn-deq-qs-edit-save" class="btn btn-primary">Save Changes</button>
+      </div>
+      <div id="deq-qs-edit-feedback" class="feedback hidden" style="margin:0 24px 12px"></div>
+      <input type="hidden" id="deq-qs-edit-id" />
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
   <!-- Enterprise Footer -->
@@ -1045,6 +1384,6 @@
     </div>
   </footer>
 
-  <script src="/bhc/script.js"></script>
+  <script src="/bhc/script.js?v=20260420k"></script>
 </body>
 </html>

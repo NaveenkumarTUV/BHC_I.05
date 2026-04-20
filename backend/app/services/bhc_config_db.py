@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -209,6 +210,100 @@ DEFAULT_QUOTATION_SECTIONS: list[dict[str, Any]] = [
     },
 ]
 
+DEFAULT_DEQ_SECTIONS: list[dict[str, Any]] = [
+    {
+        "section_key": "deq_scope",
+        "heading": "Scope of Detailed Examination",
+        "content_type": "list",
+        "content_json": json.dumps([
+            "Detailed visual inspection and systematic condition mapping of all areas identified as defective or deteriorated during the Building Health Check-Up assessment.",
+            "Non-destructive testing (NDT) including rebound hammer test, ultrasonic pulse velocity test and rebar locator / cover meter survey at identified locations.",
+            "Core cutting and laboratory testing of concrete samples for compressive strength and carbonation depth assessment, wherever required.",
+            "Crack mapping with severity classification and measurement of crack widths at all identified locations.",
+            "Half-cell potential survey for corrosion activity assessment of reinforcement, as applicable.",
+            "Photographic documentation and detailed reporting of all findings with repair/remediation recommendations.",
+        ]),
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "deq_methodology",
+        "heading": "Methodology",
+        "content_type": "list",
+        "content_json": json.dumps([
+            "Site mobilization, safety briefing and review of BHC assessment report.",
+            "Detailed inspection and condition mapping of all reported and surrounding defect areas.",
+            "NDT measurements (rebound hammer, UPV, cover meter) at agreed locations.",
+            "Core cutting and sample collection for laboratory testing, if applicable.",
+            "Data analysis, engineering interpretation and preparation of the Detailed Examination Report.",
+            "Report submission with findings, severity classification, cause analysis and remediation recommendations.",
+        ]),
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "deq_deliverables",
+        "heading": "Deliverables",
+        "content_type": "list",
+        "content_json": json.dumps([
+            "Detailed Examination Report with findings, severity classification, cause analysis and remediation recommendations.",
+            "NDT test data sheets and laboratory analysis certificates (as applicable).",
+            "Photographic documentation of all defects, test locations and conditions.",
+        ]),
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "deq_fees",
+        "heading": "Proposed Fees",
+        "content_type": "dynamic",
+        "content_json": "[]",
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "deq_payment_terms",
+        "heading": "Payment Terms",
+        "content_type": "dynamic",
+        "content_json": "[]",
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "deq_terms_conditions",
+        "heading": "Terms & Conditions",
+        "content_type": "paragraph",
+        "content_json": json.dumps([
+            "The scope of detailed examination is limited to the areas and issues identified during the Building Health Check-Up assessment. Any additional areas or scope changes shall be mutually agreed and priced separately.",
+            "Client shall arrange safe access to all inspection areas and provide all required site permissions. Scaffolding, ladders or lifting equipment required for inspection at height shall be arranged by the Client.",
+            "GST and other statutory charges shall be payable extra as applicable. General terms and conditions of business shall form an integral part of the contract.",
+        ]),
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "deq_validity",
+        "heading": "Validity",
+        "content_type": "paragraph",
+        "content_json": json.dumps([
+            "This proposal is valid for 30 days from the date of issue. The rates shall be firm for 30 days from the date of acceptance of proposal or signing of contract.",
+            "We trust you will find the above offer competitive and look forward to being associated with you. For further clarifications, please contact us.",
+        ]),
+        "is_system": True,
+        "is_visible": True,
+    },
+    {
+        "section_key": "deq_acknowledgement",
+        "heading": "Acknowledgement / Order Acceptance",
+        "content_type": "paragraph",
+        "content_json": json.dumps([
+            "The quotation is hereby acknowledged and accepted by the Client.",
+        ]),
+        "is_system": True,
+        "is_visible": True,
+    },
+]
+
 LIST_SETTING_KEYS = {
     "company_profile_paragraphs",
     "tuv_history_paragraphs",
@@ -356,6 +451,14 @@ def _validate_password_strength(password: str) -> str:
     cleaned = str(password or "")
     if len(cleaned) < 8:
         raise ValueError("Password must be at least 8 characters long.")
+    if not re.search(r"[A-Z]", cleaned):
+        raise ValueError("Password must contain at least one uppercase letter.")
+    if not re.search(r"[a-z]", cleaned):
+        raise ValueError("Password must contain at least one lowercase letter.")
+    if not re.search(r"\d", cleaned):
+        raise ValueError("Password must contain at least one digit.")
+    if not re.search(r"[^A-Za-z0-9]", cleaned):
+        raise ValueError("Password must contain at least one special character (e.g. @, #, !, $).")
     return cleaned
 
 
@@ -594,6 +697,24 @@ def init_config_db(db_path: Path | None = None) -> None:
             """
         )
 
+        # ── DEQ sections table ───────────────────────────────────
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS deq_sections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                section_key TEXT NOT NULL UNIQUE,
+                heading TEXT NOT NULL,
+                content_type TEXT NOT NULL DEFAULT 'list',
+                content_json TEXT NOT NULL DEFAULT '[]',
+                sort_order INTEGER NOT NULL,
+                is_visible INTEGER NOT NULL DEFAULT 1,
+                is_system INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
         existing_setting_keys = {
             row["key"]
             for row in conn.execute("SELECT key FROM app_settings").fetchall()
@@ -676,6 +797,27 @@ def init_config_db(db_path: Path | None = None) -> None:
             for idx, sec in enumerate(DEFAULT_QUOTATION_SECTIONS, start=1):
                 conn.execute(
                     "INSERT INTO quotation_sections(section_key, heading, content_type, content_json, sort_order, is_visible, is_system, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        sec["section_key"],
+                        sec["heading"],
+                        sec["content_type"],
+                        sec["content_json"],
+                        idx * 10,
+                        1 if sec["is_visible"] else 0,
+                        1 if sec["is_system"] else 0,
+                        now,
+                        now,
+                    ),
+                )
+
+        # Seed DEQ sections
+        deq_count = conn.execute("SELECT COUNT(*) AS total FROM deq_sections").fetchone()["total"]
+        if not deq_count:
+            now = _utcnow_iso()
+            for idx, sec in enumerate(DEFAULT_DEQ_SECTIONS, start=1):
+                conn.execute(
+                    "INSERT INTO deq_sections(section_key, heading, content_type, content_json, sort_order, is_visible, is_system, created_at, updated_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         sec["section_key"],
@@ -841,7 +983,11 @@ def get_urgency_surcharge_percent() -> float:
     """Return the urgency surcharge percentage from config DB."""
     settings = get_company_settings()
     try:
-        return float(settings.get("urgency_surcharge_percent", "10") or "10")
+        val = settings.get("urgency_surcharge_percent", "10")
+        # Treat missing/empty as default 10; explicitly allow 0
+        if val is None or val == "":
+            return 10.0
+        return float(val)
     except (ValueError, TypeError):
         return 10.0
 
@@ -1658,6 +1804,7 @@ def get_session_user(session_token: str) -> dict[str, Any] | None:
             SELECT u.email, u.full_name, u.is_admin, u.is_active, u.must_change_password,
                    u.designation,
                    (CASE WHEN u.signature_blob IS NOT NULL AND length(u.signature_blob) > 0 THEN 1 ELSE 0 END) AS has_signature,
+                   (CASE WHEN u.security_question != '' AND u.security_answer_hash != '' THEN 1 ELSE 0 END) AS has_security_question,
                    u.created_at, u.updated_at, u.created_by
             FROM user_sessions s
             JOIN user_accounts u ON u.email = s.email
@@ -1679,3 +1826,146 @@ def delete_user_session(session_token: str) -> None:
     with _connect(resolved_path) as conn:
         conn.execute("DELETE FROM user_sessions WHERE session_token_hash = ?", (hashed_token,))
         conn.commit()
+
+
+# ── DEQ Sections CRUD ────────────────────────────────────────────────────
+
+
+def _row_to_deq_section(row: sqlite3.Row) -> dict[str, Any]:
+    content_raw = str(row["content_json"] or "[]")
+    try:
+        content = json.loads(content_raw)
+    except json.JSONDecodeError:
+        content = []
+    return {
+        "id": int(row["id"]),
+        "section_key": str(row["section_key"]),
+        "heading": str(row["heading"]),
+        "content_type": str(row["content_type"]),
+        "content": content,
+        "sort_order": int(row["sort_order"]),
+        "is_visible": bool(row["is_visible"]),
+        "is_system": bool(row["is_system"]),
+    }
+
+
+def list_deq_sections() -> list[dict[str, Any]]:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM deq_sections ORDER BY sort_order ASC, id ASC"
+        ).fetchall()
+    return [_row_to_deq_section(row) for row in rows]
+
+
+def get_deq_section(section_id: int) -> dict[str, Any] | None:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        row = conn.execute("SELECT * FROM deq_sections WHERE id = ?", (section_id,)).fetchone()
+    return _row_to_deq_section(row) if row else None
+
+
+def create_deq_section(
+    heading: str,
+    content_type: str = "list",
+    content: list | None = None,
+) -> dict[str, Any]:
+    heading = str(heading).strip()
+    if not heading:
+        raise ValueError("Heading is required.")
+    allowed_types = {"list", "paragraph", "table", "dynamic"}
+    if content_type not in allowed_types:
+        raise ValueError(f"Invalid content_type. Must be one of: {', '.join(sorted(allowed_types))}.")
+    content_json = json.dumps(content or [], ensure_ascii=True)
+    section_key = "deq_" + heading.lower().replace(" ", "_").replace("/", "_")[:40]
+    now = _utcnow_iso()
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        max_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) AS mx FROM deq_sections").fetchone()["mx"]
+        existing = conn.execute("SELECT id FROM deq_sections WHERE section_key = ?", (section_key,)).fetchone()
+        if existing:
+            section_key = f"{section_key}_{int(max_order) + 10}"
+        conn.execute(
+            "INSERT INTO deq_sections(section_key, heading, content_type, content_json, sort_order, is_visible, is_system, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?)",
+            (section_key, heading, content_type, content_json, max_order + 10, now, now),
+        )
+        conn.commit()
+        new_row = conn.execute("SELECT * FROM deq_sections WHERE section_key = ?", (section_key,)).fetchone()
+    return _row_to_deq_section(new_row)
+
+
+def update_deq_section(
+    section_id: int,
+    heading: str | None = None,
+    content: list | None = None,
+    is_visible: bool | None = None,
+    content_type: str | None = None,
+) -> dict[str, Any]:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        row = conn.execute("SELECT * FROM deq_sections WHERE id = ?", (section_id,)).fetchone()
+        if not row:
+            raise ValueError(f"DEQ Section with id {section_id} not found.")
+        updates: list[str] = []
+        params: list[Any] = []
+        if heading is not None:
+            heading = str(heading).strip()
+            if not heading:
+                raise ValueError("Heading cannot be empty.")
+            updates.append("heading = ?")
+            params.append(heading)
+        if content is not None:
+            updates.append("content_json = ?")
+            params.append(json.dumps(content, ensure_ascii=True))
+        if is_visible is not None:
+            updates.append("is_visible = ?")
+            params.append(1 if is_visible else 0)
+        if content_type is not None:
+            allowed_types = {"list", "paragraph", "table", "dynamic"}
+            if content_type not in allowed_types:
+                raise ValueError(f"Invalid content_type. Must be one of: {', '.join(sorted(allowed_types))}.")
+            updates.append("content_type = ?")
+            params.append(content_type)
+        if updates:
+            updates.append("updated_at = ?")
+            params.append(_utcnow_iso())
+            params.append(section_id)
+            conn.execute(
+                f"UPDATE deq_sections SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+            conn.commit()
+    return get_deq_section(section_id)
+
+
+def delete_deq_section(section_id: int) -> bool:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    with _connect(resolved_path) as conn:
+        row = conn.execute("SELECT is_system FROM deq_sections WHERE id = ?", (section_id,)).fetchone()
+        if not row:
+            raise ValueError(f"DEQ Section with id {section_id} not found.")
+        if row["is_system"]:
+            raise ValueError("System DEQ sections cannot be deleted. You can hide them instead.")
+        conn.execute("DELETE FROM deq_sections WHERE id = ?", (section_id,))
+        conn.commit()
+    return True
+
+
+def reorder_deq_sections(ordered_ids: list[int]) -> list[dict[str, Any]]:
+    resolved_path = get_config_db_path()
+    init_config_db(resolved_path)
+    now = _utcnow_iso()
+    with _connect(resolved_path) as conn:
+        for idx, section_id in enumerate(ordered_ids):
+            conn.execute(
+                "UPDATE deq_sections SET sort_order = ?, updated_at = ? WHERE id = ?",
+                ((idx + 1) * 10, now, section_id),
+            )
+        conn.commit()
+    return list_deq_sections()
