@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/bhc/style.css?v=20260420k" />
+  <link rel="stylesheet" href="/bhc/style.css?v=20260421a" />
 </head>
 <body>
 
@@ -395,6 +395,8 @@
                 <tr>
                   <th>Name</th>
                   <th>Phone</th>
+                  <th>Location</th>
+                  <th>Pincode</th>
                   <th>Property Type</th>
                   <th>Structure Type</th>
                   <th>Area</th>
@@ -404,7 +406,7 @@
                 </tr>
               </thead>
               <tbody id="pending-body">
-                <tr><td colspan="8" class="muted">Loading...</td></tr>
+                <tr><td colspan="10" class="muted">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -427,6 +429,7 @@
               <div><label>Name</label><div id="d-name" class="detail-val"></div></div>
               <div><label>Phone</label><div id="d-phone" class="detail-val"></div></div>
               <div><label>Location</label><div id="d-location" class="detail-val"></div></div>
+              <div><label>Pincode</label><div id="d-pincode" class="detail-val"></div></div>
               <div><label>Property Type</label><div id="d-property" class="detail-val"></div></div>
               <div><label>Structure Type</label><div id="d-structure" class="detail-val"></div></div>
               <div><label>Area</label><div id="d-area" class="detail-val"></div></div>
@@ -451,6 +454,7 @@
 
             <div class="actions-row">
               <button id="btn-generate" class="btn btn-primary">Generate Quote</button>
+              <button id="btn-preview-sign" class="btn btn-outline" disabled>Preview &amp; Sign</button>
               <button id="btn-download-pdf" class="btn btn-pdf" disabled>Download PDF</button>
               <button id="btn-send-email" class="btn btn-outline" disabled>Send via Email</button>
             </div>
@@ -657,45 +661,15 @@
             </div>
             <div class="admin-card-meta">
               <h3>User Access</h3>
-              <p>Create accounts and manage user roles and permissions</p>
+              <p>Approve registrations and manage user roles and permissions</p>
             </div>
             <div class="admin-card-actions">
               <button class="btn btn-outline btn-admin-edit admin-only" data-edit-section="users">Edit</button>
               <button class="btn btn-outline btn-admin-cancel hidden" data-cancel-section="users">Cancel</button>
-              <button id="btn-create-user" class="btn btn-primary hidden">Create User</button>
             </div>
           </div>
           <div class="admin-card-body">
-            <div class="admin-section-grid">
-              <label>
-                <span>Full Name</span>
-                <input type="text" id="admin-user-full-name" class="search-input" />
-              </label>
-              <label>
-                <span>Designation</span>
-                <input type="text" id="admin-user-designation" class="search-input" placeholder="e.g. Senior Engineer - Civil" />
-              </label>
-              <label>
-                <span>Email</span>
-                <input type="email" id="admin-user-email" class="search-input" placeholder="name@ind.tuv.com" />
-              </label>
-              <label>
-                <span>Temporary Password</span>
-                <input type="password" id="admin-user-password" class="search-input" />
-              </label>
-              <label>
-                <span>Signature Image (PNG/JPG, max 500KB)</span>
-                <input type="file" id="admin-user-signature" class="search-input" accept=".png,.jpg,.jpeg" />
-              </label>
-              <label class="admin-checkbox-row">
-                <span>Role</span>
-                <div class="checkbox-inline">
-                  <input type="checkbox" id="admin-user-is-admin" />
-                  <span>Grant admin access</span>
-                </div>
-              </label>
-            </div>
-            <div class="table-wrap admin-table-wrap top-gap">
+            <div class="table-wrap admin-table-wrap">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -920,6 +894,14 @@
                     <strong>Table</strong>
                     <span>Task &amp; duration</span>
                   </div>
+                  <div class="qs-type-card" data-type-value="image">
+                    <input type="radio" name="qs-new-type" value="image" hidden />
+                    <div class="qs-type-icon-wrap">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="M21 15l-4.5-4.5L8 19"/></svg>
+                    </div>
+                    <strong>Image</strong>
+                    <span>Photo with caption</span>
+                  </div>
                 </div>
               </div>
 
@@ -955,6 +937,16 @@
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Add Row
                   </button>
+                </div>
+
+                <!-- Image builder -->
+                <div id="qs-builder-image" class="qs-builder hidden">
+                  <label class="qs-add-label">Upload Image</label>
+                  <input id="qs-image-file" type="file" class="search-input" accept=".png,.jpg,.jpeg,.webp" />
+                  <input id="qs-image-path" class="search-input" placeholder="Uploaded image path" readonly style="margin-top:8px" />
+                  <input id="qs-image-caption" class="search-input" placeholder="Caption (optional)" style="margin-top:8px" />
+                  <input id="qs-image-width" type="number" class="search-input" min="40" max="170" step="1" placeholder="Display width in mm (default: 120)" style="margin-top:8px" />
+                  <span class="qs-add-hint">Image is stored in data/assets/quotation_sections and embedded in generated quotation PDF.</span>
                 </div>
               </div>
 
@@ -1217,7 +1209,7 @@
         <h3 class="modal-title">Quotation Preview</h3>
         <button id="preview-close" class="preview-close-btn" type="button" title="Close">&times;</button>
       </div>
-      <p class="preview-subtitle">Review the quotation below. Insert your signature when ready, then download.</p>
+      <p class="preview-subtitle">Review the quotation below and confirm signature insertion. Download is enabled after this step.</p>
       <div class="preview-embed-wrap">
         <iframe id="pdf-preview-frame" class="preview-iframe"></iframe>
         <div id="preview-loading" class="preview-loading">Generating preview&hellip;</div>
@@ -1226,7 +1218,7 @@
         <button id="preview-cancel" class="btn btn-outline">Cancel</button>
         <button id="preview-insert-sig" class="btn btn-primary">
           <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15"><path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192-1.192.24a1 1 0 000 1.96l1.192.24.24 1.192a1 1 0 001.96 0l.24-1.192 1.192-.24a1 1 0 000-1.96l-1.192-.24-.24-1.192zM2.22 12.78a.75.75 0 001.06 0l7.5-7.5a.75.75 0 00-1.06-1.06l-7.5 7.5a.75.75 0 000 1.06z"/><path d="M2 17.25a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z"/></svg>
-          Insert Signature &amp; Download
+          Confirm Signature
         </button>
       </div>
       <div id="preview-feedback" class="feedback hidden"></div>
@@ -1384,6 +1376,6 @@
     </div>
   </footer>
 
-  <script src="/bhc/script.js?v=20260420k"></script>
+  <script src="/bhc/script.js?v=20260421b"></script>
 </body>
 </html>

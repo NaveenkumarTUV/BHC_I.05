@@ -19,7 +19,7 @@ from backend.app.utils.paths import DATA_DIR, EXPORTS_DIR, FRONTEND_DIR, ensure_
 
 
 LOGGER = logging.getLogger("bhc.app")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s  %(levelname)s  %(message)s", datefmt="%H:%M:%S")
 
 
 def _request_id_from(request: Request) -> str:
@@ -122,8 +122,9 @@ def create_app() -> FastAPI:
 
     @app.get("/api/assets/tuv-logo")
     async def api_tuv_logo():
-        logo_path = DATA_DIR / "tuv_logo.png"
-        if not logo_path.exists():
+        from backend.app.utils.paths import get_logo_path
+        logo_path = get_logo_path()
+        if logo_path is None:
             raise HTTPException(status_code=404, detail="Logo file not found")
         return FileResponse(str(logo_path), media_type="image/png")
 
@@ -142,5 +143,5 @@ if __name__ == "__main__":
         "backend.app.main:app",
         host="127.0.0.1",
         port=7860,
-        log_level="info",
+        log_level="warning",
     )

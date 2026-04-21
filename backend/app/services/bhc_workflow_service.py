@@ -20,7 +20,7 @@ from backend.app.services.bhc_workflow_db import (
     next_quote_sequence_for_date,
     processed_lookup_by_key,
 )
-from backend.app.utils.paths import DATA_DIR, EXPORTS_DIR
+from backend.app.utils.paths import DATA_DIR
 
 DEFAULT_ENQUIRY_EXCEL_FILENAMES = (
     "Building Health Check – Inspection Request Form 1.xlsx",
@@ -30,7 +30,6 @@ DEFAULT_ENQUIRY_EXCEL_FILENAMES = (
 )
 LOCAL_ENQUIRY_EXCEL_PATH = DATA_DIR / "bhc_enquiries.xlsx"
 PROCESSED_DB_PATH = Path(BHC_PROCESSED_DB_PATH) if BHC_PROCESSED_DB_PATH else (DATA_DIR / "bhc_processed.db")
-BHC_EXPORT_DIR = EXPORTS_DIR / "bhc"
 
 # Cache for network drive Excel candidates to avoid slow I/O on every request
 _excel_candidates_cache: dict[str, Any] = {"candidates": None, "timestamp": 0.0}
@@ -215,6 +214,7 @@ def read_workflow_clients(*, force_refresh: bool = False) -> list[dict[str, Any]
                 "urgency": client.get("Urgency", ""),
                 "gst_number": client.get("GST_Number", ""),
                 "pan_number": client.get("PAN_Number", ""),
+                "pincode": client.get("Pincode", ""),
                 "notes": client.get("Notes", ""),
                 "timestamp": client.get("Timestamp", ""),
                 "enquiry_key": client_enquiry_key(client, row_index),
@@ -292,7 +292,10 @@ def build_quote_data(
         "Issue_Observed": client_row.get("issue_observed", ""),
         "Building_Age": building_age_value,
         "Urgency": client_row.get("urgency", ""),
+        "GST_Number": client_row.get("gst_number", ""),
+        "PAN_Number": client_row.get("pan_number", ""),
         "Notes": client_row.get("notes", ""),
+        "Pincode": client_row.get("pincode", ""),
         "Timestamp": client_row.get("timestamp", ""),
         "_area_numeric": area_value,
     }

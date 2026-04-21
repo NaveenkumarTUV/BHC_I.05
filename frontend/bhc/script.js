@@ -11,6 +11,7 @@ const state = {
   adminConfig: null,
   selected: null,
   generatedQuote: null,
+  previewSignedReference: null,
   activeTab: "overview",
   isAutoRefreshing: false,
   autoRefreshTimer: null,
@@ -120,6 +121,7 @@ const el = {
   dServiceName: () => document.getElementById("d-service-name"),
 
   btnGenerate: () => document.getElementById("btn-generate"),
+  btnPreviewSign: () => document.getElementById("btn-preview-sign"),
   btnDownloadPdf: () => document.getElementById("btn-download-pdf"),
   btnSendEmail: () => document.getElementById("btn-send-email"),
   detailFeedback: () => document.getElementById("detail-feedback"),
@@ -169,7 +171,6 @@ const el = {
   btnAddNewBuildingPricingRow: () => document.getElementById("btn-add-new-building-pricing-row"),
   btnSavePricing: () => document.getElementById("btn-save-pricing"),
   btnSaveDocument: () => document.getElementById("btn-save-document"),
-  btnCreateUser: () => document.getElementById("btn-create-user"),
   adminPricingBody: () => document.getElementById("admin-pricing-body"),
   adminNewBuildingPricingBody: () => document.getElementById("admin-new-building-pricing-body"),
   adminUsersBody: () => document.getElementById("admin-users-body"),
@@ -196,14 +197,6 @@ const el = {
   adminPaymentTerms: () => document.getElementById("admin-payment-terms"),
   adminOtherTerms: () => document.getElementById("admin-other-terms"),
   adminSystemNote: () => document.getElementById("admin-system-note"),
-  adminUserFullName: () => document.getElementById("admin-user-full-name"),
-  adminUserDesignation: () => document.getElementById("admin-user-designation"),
-  adminUserEmail: () => document.getElementById("admin-user-email"),
-  adminUserPassword: () => document.getElementById("admin-user-password"),
-  adminUserSignature: () => document.getElementById("admin-user-signature"),
-  adminUserIsAdmin: () => document.getElementById("admin-user-is-admin"),
-
-
 
   // Scope of Work admin
   btnSaveScope: () => document.getElementById("btn-save-scope"),
@@ -702,11 +695,15 @@ function joinLines(values) {
 function resetQuoteStudio() {
   state.selected = null;
   state.generatedQuote = null;
+  state.previewSignedReference = null;
   setFeedback("");
 
   el.detailEmpty().classList.remove("hidden");
   el.detailPanel().classList.add("hidden");
   el.discountPercent().value = "";
+  el.btnPreviewSign().disabled = true;
+  el.btnDownloadPdf().disabled = true;
+  el.btnSendEmail().disabled = true;
 }
 
 async function loadExcelStatus() {
@@ -907,7 +904,8 @@ function applyPendingFilters() {
     const matchesSearch = !q ||
       (c.name || "").toLowerCase().includes(q) ||
       (c.phone || "").toLowerCase().includes(q) ||
-      (c.location || "").toLowerCase().includes(q);
+      (c.location || "").toLowerCase().includes(q) ||
+      (c.pincode || "").toLowerCase().includes(q);
 
     const matchesProperty = propertyType === "all" || (c.property_type || "") === propertyType;
     return matchesSearch && matchesProperty;
@@ -1267,31 +1265,48 @@ async function loadAdminConfig() {
 function renderAdminUsers() {
   const body = el.adminUsersBody();
   const users = state.adminConfig?.users || [];
+  const currentEmail = state.session?.email || "";
+  const card = document.querySelector('[data-admin-section="users"]');
+  const isLocked = card?.classList.contains("admin-locked");
 
   if (!users.length) {
     body.innerHTML = '<tr><td colspan="8" class="muted">No users found.</td></tr>';
     return;
   }
 
-  body.innerHTML = users.map((user, index) => `
-    <tr>
+  body.innerHTML = users.map((user, index) => {
+    const isSelf = user.email === currentEmail;
+    const statusHtml = isLocked
+      ? (user.is_active ? '<span class="sync-pill saved">Active</span>' : '<span class="sync-pill dirty">Pending</span>')
+      : (user.is_active
+          ? `<button class="btn btn-sm btn-outline btn-status-toggle" data-user-deactivate="${index}" ${isSelf ? 'disabled title="Cannot deactivate yourself"' : ''} style="color:var(--err);border-color:var(--err)">Deactivate</button>`
+          : `<button class="btn btn-sm btn-primary" data-user-approve="${index}">Approve</button>`);
+    const roleHtml = isLocked
+      ? (user.is_admin ? '<span class="sync-pill saving">Admin</span>' : '<span class="sync-pill saved">User</span>')
+      : `<select data-user-role="${index}" class="search-input" style="max-width:100px;padding:4px 8px;font-size:12px" ${isSelf ? 'disabled title="Cannot change own role"' : ''}>
+           <option value="0" ${!user.is_admin ? 'selected' : ''}>User</option>
+           <option value="1" ${user.is_admin ? 'selected' : ''}>Admin</option>
+         </select>`;
+    const actionsHtml = isLocked
+      ? ''
+      : `<div class="inline-reset-row">
+          <input type="password" data-user-reset-index="${index}" class="search-input" placeholder="Temp password" style="max-width:130px" />
+          <button class="btn btn-sm btn-outline" data-user-reset-button="${index}">Reset</button>
+        </div>`;
+
+    return `<tr>
       <td>${escHtml(user.email)}</td>
       <td>${escHtml(user.full_name)}</td>
       <td>${escHtml(user.designation || "—")}</td>
       <td>${user.has_signature ? '<span class="sync-pill saved">Uploaded</span>' : `<label class="btn btn-sm btn-outline" style="cursor:pointer"><input type="file" accept=".png,.jpg,.jpeg" data-sig-upload="${index}" hidden />Upload</label>`}</td>
-      <td>${user.is_admin ? '<span class="sync-pill saving">Admin</span>' : '<span class="sync-pill saved">User</span>'}</td>
-      <td>${user.is_active ? '<span class="sync-pill saved">Active</span>' : '<span class="sync-pill dirty">Pending</span>'}</td>
+      <td>${roleHtml}</td>
+      <td>${statusHtml}</td>
       <td>${user.must_change_password ? '<span class="sync-pill dirty">Must change</span>' : '<span class="sync-pill saved">OK</span>'}</td>
-      <td>
-        <div class="inline-reset-row">
-          ${!user.is_active ? `<button class="btn btn-sm btn-primary" data-user-approve="${index}">Approve</button>` : ''}
-          <input type="password" data-user-reset-index="${index}" class="search-input" placeholder="Temp password" style="max-width:130px" />
-          <button class="btn btn-sm btn-outline" data-user-reset-button="${index}">Reset</button>
-        </div>
-      </td>
-    </tr>
-  `).join("");
+      <td>${actionsHtml}</td>
+    </tr>`;
+  }).join("");
 
+  // Signature upload
   body.querySelectorAll("input[data-sig-upload]").forEach((input) => {
     input.addEventListener("change", async () => {
       const index = Number(input.dataset.sigUpload);
@@ -1316,6 +1331,7 @@ function renderAdminUsers() {
     });
   });
 
+  // Approve (pending → active)
   body.querySelectorAll("button[data-user-approve]").forEach((button) => {
     button.addEventListener("click", async () => {
       const index = Number(button.dataset.userApprove);
@@ -1335,6 +1351,50 @@ function renderAdminUsers() {
     });
   });
 
+  // Deactivate (active → inactive)
+  body.querySelectorAll("button[data-user-deactivate]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const index = Number(button.dataset.userDeactivate);
+      const user = users[index];
+      if (!confirm(`Deactivate ${user.email}? They will no longer be able to log in.`)) return;
+      try {
+        await api("/api/bhc/admin/users/toggle-active", {
+          method: "POST",
+          body: JSON.stringify({ email: user.email, is_active: false }),
+        });
+        await loadAdminConfig();
+        setAdminFeedback(`User ${user.email} deactivated.`, "success");
+        toast(`${user.email} deactivated`, "success");
+      } catch (err) {
+        setAdminFeedback(err.message, "error");
+        toast(err.message, "error");
+      }
+    });
+  });
+
+  // Role toggle (admin ↔ user)
+  body.querySelectorAll("select[data-user-role]").forEach((select) => {
+    select.addEventListener("change", async () => {
+      const index = Number(select.dataset.userRole);
+      const user = users[index];
+      const isAdmin = select.value === "1";
+      try {
+        await api("/api/bhc/admin/users/toggle-admin", {
+          method: "POST",
+          body: JSON.stringify({ email: user.email, is_admin: isAdmin }),
+        });
+        await loadAdminConfig();
+        const role = isAdmin ? "Admin" : "User";
+        setAdminFeedback(`${user.email} role set to ${role}.`, "success");
+        toast(`${user.email} → ${role}`, "success");
+      } catch (err) {
+        setAdminFeedback(err.message, "error");
+        toast(err.message, "error");
+      }
+    });
+  });
+
+  // Password reset
   body.querySelectorAll("button[data-user-reset-button]").forEach((button) => {
     button.addEventListener("click", async () => {
       const index = Number(button.dataset.userResetButton);
@@ -1442,7 +1502,7 @@ function _renderQSItems() {
   const isLocked = container.closest("[data-admin-section]")?.classList.contains("admin-locked");
 
   container.innerHTML = _qsLocalSections.map((sec, idx) => {
-    const typeLabel = { list: "Numbered List", paragraph: "Paragraphs", table: "Table", dynamic: "Dynamic" }[sec.content_type] || sec.content_type;
+    const typeLabel = { list: "Numbered List", paragraph: "Paragraphs", table: "Table", dynamic: "Dynamic", image: "Image" }[sec.content_type] || sec.content_type;
     const systemBadge = sec.is_system ? '<span class="qs-badge qs-badge--system">System</span>' : '<span class="qs-badge qs-badge--custom">Custom</span>';
     const hiddenBadge = !sec.is_visible ? '<span class="qs-badge qs-badge--hidden">Hidden</span>' : '';
     const isDynamic = sec.content_type === "dynamic";
@@ -1558,6 +1618,54 @@ function _openQsEdit(secId) {
   const panel = document.getElementById(`qs-edit-panel-${secId}`);
   if (!panel) return;
 
+  if (sec.content_type === "image") {
+    const current = (sec.content && sec.content[0]) || {};
+    const imagePath = String(current.path || current.image_path || "");
+    const caption = String(current.caption || "");
+    const width = Number(current.width_mm || 120);
+    panel.innerHTML = `
+      <label><span>Heading</span>
+        <input id="qs-edit-heading-${secId}" class="search-input" value="${escHtml(sec.heading)}" />
+      </label>
+      <label><span>Upload New Image (optional)</span>
+        <input type="file" id="qs-edit-image-file-${secId}" class="search-input" accept=".png,.jpg,.jpeg,.webp" />
+      </label>
+      <label><span>Image Path</span>
+        <input id="qs-edit-image-path-${secId}" class="search-input" value="${escHtml(imagePath)}" />
+      </label>
+      <label><span>Caption</span>
+        <input id="qs-edit-image-caption-${secId}" class="search-input" value="${escHtml(caption)}" />
+      </label>
+      <label><span>Width (mm)</span>
+        <input id="qs-edit-image-width-${secId}" type="number" min="40" max="170" step="1" class="search-input" value="${Number.isFinite(width) ? width : 120}" />
+      </label>
+      <div class="qs-edit-actions">
+        <button class="btn btn-primary btn-sm" id="qs-edit-save-${secId}">Save</button>
+        <button class="btn btn-outline btn-sm" id="qs-edit-cancel-${secId}">Cancel</button>
+      </div>
+    `;
+    panel.classList.remove("hidden");
+
+    const fileInput = document.getElementById(`qs-edit-image-file-${secId}`);
+    fileInput?.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      try {
+        const uploadedPath = await _uploadQuotationSectionImage(file);
+        document.getElementById(`qs-edit-image-path-${secId}`).value = uploadedPath;
+        toast("Image uploaded", "success");
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        fileInput.value = "";
+      }
+    });
+
+    document.getElementById(`qs-edit-save-${secId}`).addEventListener("click", () => _saveQsEdit(secId));
+    document.getElementById(`qs-edit-cancel-${secId}`).addEventListener("click", () => panel.classList.add("hidden"));
+    return;
+  }
+
   // For table sections, extract _col_headers and strip from displayed content
   let displayContent = sec.content || [];
   let colHeaders = ["Task / Activity", "Duration"];
@@ -1608,6 +1716,36 @@ async function _saveQsEdit(secId) {
   const heading = document.getElementById(`qs-edit-heading-${secId}`)?.value.trim();
   const rawContent = document.getElementById(`qs-edit-content-${secId}`)?.value || "";
 
+  if (sec.content_type === "image") {
+    const imagePath = (document.getElementById(`qs-edit-image-path-${secId}`)?.value || "").trim();
+    const caption = (document.getElementById(`qs-edit-image-caption-${secId}`)?.value || "").trim();
+    const widthValue = Number(document.getElementById(`qs-edit-image-width-${secId}`)?.value || 120);
+    if (!imagePath) {
+      toast("Image path is required", "error");
+      return;
+    }
+    const content = [{
+      path: imagePath,
+      caption,
+      width_mm: Number.isFinite(widthValue) && widthValue > 0 ? widthValue : 120,
+    }];
+
+    try {
+      const r = await api(`/api/bhc/admin/quotation-sections/${secId}`, {
+        method: "PUT",
+        body: JSON.stringify({ heading, content }),
+      });
+      const data = await r.json();
+      const idx = _qsLocalSections.findIndex(s => s.id === secId);
+      if (idx >= 0) _qsLocalSections[idx] = data.section;
+      _renderQSItems();
+      toast("Section updated", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+    return;
+  }
+
   let content;
   if (sec.content_type === "table") {
     // Each line should be a JSON object; strip any existing _col_headers line
@@ -1615,6 +1753,7 @@ async function _saveQsEdit(secId) {
       try { return JSON.parse(l); } catch { return { text: l.trim() }; }
     }).filter(r => !r._col_headers);
     // Re-attach updated column headers from the edit panel inputs
+    const panel = document.getElementById(`qs-edit-panel-${secId}`);
     const colInputs = Array.from(panel.querySelectorAll(".qs-edit-col-name"));
     const headers = colInputs.length
       ? colInputs.map((inp, i) => inp.value.trim() || `Column ${i + 1}`)
@@ -1654,6 +1793,21 @@ async function _onQsDelete(secId) {
 /* ── Add Section Modal — interactive builder ── */
 let _qsActiveType = "list";
 let _qsTableColumns = ["Task / Activity", "Duration"];
+
+async function _uploadQuotationSectionImage(file) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/bhc/admin/quotation-sections/upload-image", {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || "Image upload failed");
+  }
+  return String(data.image_path || "");
+}
 
 function _qsRenderTableHeader() {
   const header = document.getElementById("qs-tbl-header");
@@ -1753,18 +1907,25 @@ function _qsCloseModal() {
 
 function _qsSetActiveType(type) {
   _qsActiveType = type;
-  document.querySelectorAll(".qs-type-card").forEach(card => {
+  const modal = el.qsAddModal();
+  if (!modal) return;
+
+  modal.querySelectorAll(".qs-type-card[data-type-value]").forEach(card => {
     const isMatch = card.dataset.typeValue === type;
     card.classList.toggle("qs-type-card--active", isMatch);
-    card.querySelector("input[type=radio]").checked = isMatch;
+    const radio = card.querySelector("input[type=radio]");
+    if (radio) radio.checked = isMatch;
   });
   // Show matching builder, hide others
-  document.getElementById("qs-builder-list").classList.toggle("hidden", type !== "list");
-  document.getElementById("qs-builder-paragraph").classList.toggle("hidden", type !== "paragraph");
-  document.getElementById("qs-builder-table").classList.toggle("hidden", type !== "table");
+  document.getElementById("qs-builder-list")?.classList.toggle("hidden", type !== "list");
+  document.getElementById("qs-builder-paragraph")?.classList.toggle("hidden", type !== "paragraph");
+  document.getElementById("qs-builder-table")?.classList.toggle("hidden", type !== "table");
+  document.getElementById("qs-builder-image")?.classList.toggle("hidden", type !== "image");
   // If switching to a builder that's empty, add one starter item
+  if (type === "image") return;
   const containerId = type === "list" ? "qs-list-items" : type === "paragraph" ? "qs-para-items" : "qs-table-rows";
-  if (!document.getElementById(containerId).children.length) {
+  const container = document.getElementById(containerId);
+  if (container && !container.children.length) {
     _qsAddBuilderItem(type);
   }
 }
@@ -1773,6 +1934,14 @@ function _qsResetBuilders() {
   document.getElementById("qs-list-items").innerHTML = "";
   document.getElementById("qs-para-items").innerHTML = "";
   document.getElementById("qs-table-rows").innerHTML = "";
+  const imagePath = document.getElementById("qs-image-path");
+  const imageCaption = document.getElementById("qs-image-caption");
+  const imageWidth = document.getElementById("qs-image-width");
+  const imageFile = document.getElementById("qs-image-file");
+  if (imagePath) imagePath.value = "";
+  if (imageCaption) imageCaption.value = "";
+  if (imageWidth) imageWidth.value = "120";
+  if (imageFile) imageFile.value = "";
   // Reset columns to defaults and re-render header
   _qsTableColumns = ["Task / Activity", "Duration"];
   _qsRenderTableHeader();
@@ -1840,6 +2009,16 @@ function _qsCollectContent() {
       return [{ _col_headers: true, headers }, ...rows];
     }
     return rows;
+  } else if (_qsActiveType === "image") {
+    const path = (document.getElementById("qs-image-path")?.value || "").trim();
+    const caption = (document.getElementById("qs-image-caption")?.value || "").trim();
+    const widthValue = Number(document.getElementById("qs-image-width")?.value || 120);
+    if (!path) return [];
+    return [{
+      path,
+      caption,
+      width_mm: Number.isFinite(widthValue) && widthValue > 0 ? widthValue : 120,
+    }];
   }
   return [];
 }
@@ -2380,52 +2559,6 @@ async function onSavePricing() {
   }
 }
 
-async function onCreateUser() {
-  const payload = {
-    full_name: el.adminUserFullName().value.trim(),
-    email: el.adminUserEmail().value.trim(),
-    password: el.adminUserPassword().value,
-    is_admin: el.adminUserIsAdmin().checked,
-    designation: el.adminUserDesignation().value.trim(),
-  };
-
-  if (!payload.full_name || !payload.email || !payload.password) {
-    setAdminFeedback("Full name, email, and temporary password are required to create a user.", "error");
-    return;
-  }
-
-  try {
-    setAdminFeedback("Creating user...", "info");
-    await api("/api/bhc/admin/users", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    // Upload signature if provided
-    const sigFile = el.adminUserSignature().files?.[0];
-    if (sigFile) {
-      const form = new FormData();
-      form.append("file", sigFile);
-      // Note: signature is tied to the currently logged-in user's session.
-      // For new users, admin can upload via the table after creation.
-    }
-
-    el.adminUserFullName().value = "";
-    el.adminUserDesignation().value = "";
-    el.adminUserEmail().value = "";
-    el.adminUserPassword().value = "";
-    el.adminUserSignature().value = "";
-    el.adminUserIsAdmin().checked = false;
-    await loadAdminConfig();
-    setAdminFeedback("User created successfully.", "success");
-    toast("User created", "success");
-    lockAdminSection("users");
-  } catch (err) {
-    setAdminFeedback(err.message, "error");
-    toast(err.message, "error");
-  }
-}
-
 function onAddPricingRow() {
   if (!state.adminConfig?.pricing?.slabs) {
     state.adminConfig = state.adminConfig || {};
@@ -2475,6 +2608,14 @@ function lockAdminSection(section) {
   const card = document.querySelector(`[data-admin-section="${section}"]`);
   if (!card) return;
   card.classList.add("admin-locked");
+  if (section === "users") {
+    renderAdminUsers();
+    const editBtn = card.querySelector('[data-edit-section="users"]');
+    const cancelBtn = card.querySelector('[data-cancel-section="users"]');
+    if (editBtn) editBtn.classList.remove("hidden");
+    if (cancelBtn) cancelBtn.classList.add("hidden");
+    return;
+  }
   card.querySelectorAll("input, textarea, select").forEach(el => {
     el.disabled = true;
     el.classList.add("admin-disabled");
@@ -2493,6 +2634,14 @@ function unlockAdminSection(section) {
   const card = document.querySelector(`[data-admin-section="${section}"]`);
   if (!card) return;
   card.classList.remove("admin-locked");
+  if (section === "users") {
+    renderAdminUsers();
+    const editBtn = card.querySelector('[data-edit-section="users"]');
+    const cancelBtn = card.querySelector('[data-cancel-section="users"]');
+    if (editBtn) editBtn.classList.add("hidden");
+    if (cancelBtn) cancelBtn.classList.remove("hidden");
+    return;
+  }
   card.querySelectorAll("input, textarea, select").forEach(el => {
     el.disabled = false;
     el.classList.remove("admin-disabled");
@@ -2648,11 +2797,12 @@ async function init() {
   });
 
   el.btnGenerate().addEventListener("click", onGenerateQuote);
-  el.btnDownloadPdf().addEventListener("click", () => onDownload("pdf"));
+  el.btnPreviewSign().addEventListener("click", onPreviewAndSign);
+  el.btnDownloadPdf().addEventListener("click", onDownloadPdf);
   el.btnSendEmail().addEventListener("click", openEmailDraft);
   el.previewClose().addEventListener("click", closePreviewModal);
   el.previewCancel().addEventListener("click", closePreviewModal);
-  el.previewInsertSig().addEventListener("click", onInsertSignatureAndDownload);
+  el.previewInsertSig().addEventListener("click", onConfirmPreviewSignature);
   [el.changeCurrentPassword(), el.changeNewPassword(), el.changeConfirmPassword()].forEach((input) => {
     input.addEventListener("input", evaluateChangePassword);
   });
@@ -2664,7 +2814,6 @@ async function init() {
   el.btnSavePricing().addEventListener("click", onSavePricing);
   el.btnAddPricingRow().addEventListener("click", onAddPricingRow);
   el.btnAddNewBuildingPricingRow().addEventListener("click", onAddNewBuildingPricingRow);
-  el.btnCreateUser().addEventListener("click", onCreateUser);
   el.btnSaveScope().addEventListener("click", onSaveScope);
   el.btnSaveQSections().addEventListener("click", onSaveQSections);
   el.btnAddQs().addEventListener("click", _openQsAddModal);
@@ -2675,13 +2824,30 @@ async function init() {
   // Close modal on overlay background click (not card)
   el.qsAddModal().addEventListener("click", (e) => { if (e.target === el.qsAddModal()) _qsCloseModal(); });
   // Content type card selection
-  document.querySelectorAll(".qs-type-card").forEach(card => {
+  el.qsAddModal().querySelectorAll(".qs-type-card[data-type-value]").forEach(card => {
     card.addEventListener("click", () => _qsSetActiveType(card.dataset.typeValue));
   });
   // Builder add-item buttons
   document.getElementById("btn-qs-add-item").addEventListener("click", () => _qsAddBuilderItem("list"));
   document.getElementById("btn-qs-add-para").addEventListener("click", () => _qsAddBuilderItem("paragraph"));
   document.getElementById("btn-qs-add-row").addEventListener("click", () => _qsAddBuilderItem("table"));
+  const qsImageFile = document.getElementById("qs-image-file");
+  if (qsImageFile) {
+    qsImageFile.addEventListener("change", async () => {
+      const file = qsImageFile.files?.[0];
+      if (!file) return;
+      try {
+        const uploadedPath = await _uploadQuotationSectionImage(file);
+        const pathInput = document.getElementById("qs-image-path");
+        if (pathInput) pathInput.value = uploadedPath;
+        toast("Image uploaded", "success");
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        qsImageFile.value = "";
+      }
+    });
+  }
   el.btnLoadAudit().addEventListener("click", loadAuditLogs);
   el.auditFilterType().addEventListener("change", renderAuditLogs);
   document.addEventListener("visibilitychange", onVisibilityChange);
@@ -2820,7 +2986,11 @@ async function loadPending() {
   try {
     const r = await api("/api/bhc/clients/pending");
     const d = await r.json();
-    state.pending = d.clients || [];
+    state.pending = (d.clients || []).map((c) => ({
+      ...c,
+      area_sqft: (c.area_sqft ?? c.Area_sqft ?? "").toString().trim(),
+      area_numeric: Number(c.area_numeric ?? c._area_numeric ?? 0),
+    }));
     el.pendingCount().textContent = d.count || 0;
 
     updatePendingPropertyFilter();
@@ -2837,31 +3007,36 @@ async function loadPending() {
     updatePendingPropertyFilter();
     renderPending([]);
     updateHeroStats();
-    el.pendingBody().innerHTML = '<tr><td colspan="8" class="muted">No enquiry workbook found on OneDrive. Check the .env EXCEL_FILE_PATH setting.</td></tr>';
+    el.pendingBody().innerHTML = '<tr><td colspan="10" class="muted">No enquiry workbook found on OneDrive. Check the .env EXCEL_FILE_PATH setting.</td></tr>';
   }
 }
 
 function renderPending(rows) {
   const body = el.pendingBody();
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="8" class="muted">No pending clients match current filters.</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" class="muted">No pending clients match current filters.</td></tr>';
     return;
   }
 
   const q = el.pendingSearch().value.trim();
 
-  body.innerHTML = rows.map((c, idx) => `
+  body.innerHTML = rows.map((c, idx) => {
+    const areaDisplay = (c.area_sqft || "").trim() || (Number(c.area_numeric || 0) > 0 ? `${Number(c.area_numeric || 0).toLocaleString("en-IN")} sq.ft` : "-");
+    return `
     <tr>
       <td>${highlightText(c.name, q)}</td>
       <td>${highlightText(c.phone, q)}</td>
+      <td>${escHtml(c.location || "-")}</td>
+      <td>${escHtml(c.pincode || "-")}</td>
       <td>${escHtml(c.property_type)}</td>
       <td>${escHtml(c.building_system || "-")}</td>
-      <td>${escHtml(c.area_sqft)}</td>
+      <td>${escHtml(areaDisplay)}</td>
       <td>${escHtml(c.building_age || "-")}</td>
       <td>${escHtml(c.urgency || "-")}</td>
-      <td><button class="btn btn-sm btn-primary" data-pending-index="${idx}"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\"><polyline points=\"9 18 15 12 9 6\"/></svg> Select</button></td>
+      <td><button class="btn btn-sm btn-primary" data-pending-index="${idx}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg> Select</button></td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   body.querySelectorAll("button[data-pending-index]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -2895,6 +3070,7 @@ async function selectPending(c) {
       building_age: full.Building_Age || c.building_age,
       urgency: full.Urgency || c.urgency || "",
       notes: full.Notes || c.notes,
+      pincode: full.Pincode || c.pincode || "",
       timestamp: full.Timestamp || c.timestamp,
     };
   } catch (_err) {
@@ -2911,6 +3087,7 @@ async function selectPending(c) {
   el.dName().textContent = selectedClient.name || "-";
   el.dPhone().textContent = selectedClient.phone || "-";
   el.dLocation().textContent = selectedClient.location || "-";
+  document.getElementById("d-pincode").textContent = selectedClient.pincode || "-";
   el.dProperty().textContent = selectedClient.property_type || "-";
   el.dStructure().textContent = selectedClient.building_system || "-";
 
@@ -2924,7 +3101,14 @@ async function selectPending(c) {
         : "Building Health Check";
   el.dServiceName().textContent = inferredServiceName;
   el.dStructurePreview().textContent = bsLabel || "-";
-  el.dArea().textContent = `${selectedClient.area_sqft || "0"} sq.ft`;
+  const areaText = (selectedClient.area_sqft || "").trim();
+  if (areaText) {
+    el.dArea().textContent = areaText;
+  } else if (Number(selectedClient.area_numeric || 0) > 0) {
+    el.dArea().textContent = `${Number(selectedClient.area_numeric || 0).toLocaleString("en-IN")} sq.ft`;
+  } else {
+    el.dArea().textContent = "0 sq.ft";
+  }
   el.dIssue().textContent = selectedClient.issue_observed || "-";
   el.dAge().textContent = selectedClient.building_age || "-";
   document.getElementById("d-urgency").textContent = selectedClient.urgency || "-";
@@ -2936,6 +3120,7 @@ async function selectPending(c) {
   el.discountPercent().value = "";
 
   el.btnGenerate().disabled = false;
+  el.btnPreviewSign().disabled = true;
   el.btnDownloadPdf().disabled = true;
   el.btnSendEmail().disabled = true;
 }
@@ -2945,14 +3130,6 @@ async function onGenerateQuote() {
     toast("Select a pending client first", "error");
     return;
   }
-
-  const confirmed = await confirmAction({
-    title: "Generate Quotation",
-    message: `Generate quotation for ${state.selected.name}? This will record the client as processed.`,
-    confirmText: "Generate",
-    type: "info",
-  });
-  if (!confirmed) return;
 
   const btn = el.btnGenerate();
   try {
@@ -2975,6 +3152,7 @@ async function onGenerateQuote() {
     });
     const data = await r.json();
     state.generatedQuote = data;
+    state.previewSignedReference = null;
 
     document.getElementById("d-price-base").textContent = fmtINR(data?.pricing?.final_cost || 0);
     const gstPct = Number(data?.pricing?.gst_percent || 18);
@@ -2998,12 +3176,13 @@ async function onGenerateQuote() {
     el.dServiceName().textContent = data?.pricing?.service_name || "Building Health Check";
     el.dRef().textContent = data?.reference_number || "-";
 
+    el.btnPreviewSign().disabled = false;
     el.btnDownloadPdf().disabled = false;
     el.btnSendEmail().disabled = false;
 
     const usedDiscount = Number(data?.pricing?.discount_percent || 0);
     const discountMsg = usedDiscount > 0 ? ` Discount applied: ${usedDiscount}%` : "";
-    setFeedback(`Quotation generated and stored as processed client.${discountMsg}`, "success");
+    setFeedback(`Quotation generated successfully.${discountMsg} It will be marked processed after PDF download.`, "success");
     toast("Quote generated", "success");
     notify("Quotation Generated", `${state.selected.name} — ${fmtINR(totalWithGst)} (incl. GST)`, "success", 6000);
 
@@ -3030,8 +3209,8 @@ function _buildDownloadBody() {
   };
 }
 
-/** Open the preview modal with a signature-less PDF, then let the user insert sig & download. */
-async function onDownload(format) {
+/** Open preview modal for explicit preview & sign step. */
+async function onPreviewAndSign() {
   if (!state.selected) return;
 
   const modal = el.pdfPreviewModal();
@@ -3075,9 +3254,9 @@ async function onDownload(format) {
   }
 }
 
-/** Download final PDF with signature inserted. */
-async function onInsertSignatureAndDownload() {
-  // Check if user has uploaded a signature; if not, prompt them
+/** Confirm signature readiness after preview. */
+async function onConfirmPreviewSignature() {
+  // Ensure user has uploaded a signature; if not, prompt now.
   if (!state.session?.has_signature) {
     const fileInput = document.createElement("input");
     fileInput.type = "file";
@@ -3093,7 +3272,7 @@ async function onInsertSignatureAndDownload() {
     fileInput.remove();
 
     if (!file) {
-      toast("Signature is required to download the final PDF.", "error");
+      toast("Signature is required to complete Preview & Sign.", "error");
       return;
     }
 
@@ -3120,8 +3299,20 @@ async function onInsertSignatureAndDownload() {
   const feedback = el.previewFeedback();
   feedback.classList.add("hidden");
 
+  state.previewSignedReference = state.generatedQuote?.reference_number || "SIGNED";
+  el.btnDownloadPdf().disabled = false;
+  closePreviewModal();
+  toast("Preview & Sign completed. Signature will be included in the download.", "success");
+}
+
+async function onDownloadPdf() {
+  if (!state.selected || !state.generatedQuote) return;
+
+  const currentReference = state.generatedQuote?.reference_number || "";
+  const hasExplicitPreviewSign = !!state.previewSignedReference && state.previewSignedReference === currentReference;
+
   const body = _buildDownloadBody();
-  body.include_signature = true;
+  body.include_signature = hasExplicitPreviewSign;
 
   try {
     const r = await fetch("/api/bhc/download/pdf", {
@@ -3150,13 +3341,12 @@ async function onInsertSignatureAndDownload() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    closePreviewModal();
     toast("Downloaded " + filename, "success");
     activateTab("pipeline");
     await Promise.all([loadProcessed(), loadDashboard()]);
   } catch (err) {
-    feedback.textContent = err.message;
-    feedback.classList.remove("hidden");
+    setFeedback(err.message, "error");
+    toast(err.message, "error");
   }
 }
 

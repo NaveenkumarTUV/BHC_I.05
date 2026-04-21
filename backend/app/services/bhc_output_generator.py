@@ -8,6 +8,9 @@ in this module but are not exposed by the current BHC routes.
 
 from __future__ import annotations
 
+import logging
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
@@ -15,6 +18,7 @@ from typing import Dict, Any
 from backend.app.services.bhc_config_db import get_company_settings, get_document_settings, list_quotation_sections
 
 REFERENCE_PREFIX = "BEN-HC-TUVR"
+logger = logging.getLogger("bhc.output")
 
 
 # ---------------------------------------------------------------------------
@@ -110,37 +114,76 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
     LIGHT_BG = (235, 243, 250)
     TABLE_STRIPE = (245, 248, 252)
 
-    # Locate logo
-    _logo_path = Path(__file__).resolve().parents[3] / "data" / "assests" / "tuv_logo.png"
-    if not _logo_path.exists():
-        _logo_path = output_path.parent.parent / "tuv_logo.png"
-    if not _logo_path.exists():
-        _logo_path = Path(__file__).resolve().parents[3] / "data" / "tuv_logo.png"
-    logo_available = _logo_path.exists()
+    # Locate header logo — prefer quotation_logo.jpg as shown in the reference format
+    import sys as _sys
+    from backend.app.utils.paths import DATA_DIR
+    _logo_render_path: Path | None = None
+    _logo_temp_path: Path | None = None
+    _logo_search_dirs: list[Path] = []
+    if getattr(_sys, "frozen", False):
+        _logo_search_dirs.append(Path(_sys._MEIPASS) / "data" / "assets")
+    _logo_search_dirs.append(DATA_DIR / "assets")
+    for _logo_dir in _logo_search_dirs:
+        for _logo_name in ("quotation_logo.jpg", "quotation_logo.png", "tuv_logo.jpg", "tuv_logo.png"):
+            _candidate = _logo_dir / _logo_name
+            if _candidate.exists():
+                _logo_render_path = _candidate
+                break
+        if _logo_render_path is not None:
+            break
+
+    if _logo_render_path is None:
+        logger.warning("Header logo not found in data/assets/")
+    else:
+        logger.info("Header logo selected: %s", _logo_render_path)
+
+    # fpdf validates PNG headers strictly; re-save any image as a valid PNG via Pillow.
+    if _logo_render_path is not None:
+        try:
+            import tempfile as _tempfile
+            from PIL import Image as _PilImage
+            _im = _PilImage.open(_logo_render_path).convert("RGB")
+            with _tempfile.NamedTemporaryFile(suffix=".png", delete=False) as _tmp:
+                _tmp_name = _tmp.name
+            _im.save(_tmp_name, format="PNG")
+            _im.close()
+            _logo_temp_path = Path(_tmp_name)
+            _logo_render_path = _logo_temp_path
+            logger.info("Logo converted to valid PNG -> %s", _tmp_name)
+        except Exception:
+            logger.exception("Logo PNG conversion failed; logo will be skipped")
+            _logo_render_path = None
 
     class TuvPDF(FPDF):
         def header(self):
-            self.set_fill_color(*NAVY)
-            self.rect(0, 0, 210, 20, "F")
-            self.set_fill_color(*TUV_BLUE)
-            self.rect(0, 20, 210, 1.5, "F")
-            self.set_y(3)
+            # White header background matching reference format
+            self.set_fill_color(*WHITE)
+            self.rect(0, 0, 210, 22, "F")
+            # Outer border around the header box
+            self.set_draw_color(*NAVY)
+            self.set_line_width(0.4)
+            self.rect(10, 1, 190, 20)
+            # Vertical divider after company name column (at x=75)
+            self.line(85, 1, 85, 21)
+            # Vertical divider before logo column (at x=150)
+            self.line(150, 1, 150, 21)
+            # Company name — left column, bold blue, centered
             self.set_font("Helvetica", "B", 10)
-            self.set_text_color(*WHITE)
-            self.cell(90, 6, _pdf_safe(company_settings["company_name"]), align="L")
-            self.set_font("Helvetica", "B", 14)
-            self.cell(30, 6, "QUOTATION", align="C")
-            if logo_available:
+            self.set_text_color(*TUV_BLUE)
+            self.set_xy(10, 5)
+            self.cell(75, 11, _pdf_safe(company_settings["company_name"]), align="C")
+            # QUOTATION — centre column, bold blue
+            self.set_font("Helvetica", "B", 13)
+            self.set_xy(85, 5)
+            self.cell(65, 11, "QUOTATION", align="C")
+            # Logo — right column
+            if _logo_render_path is not None:
                 try:
-                    self.image(str(_logo_path), x=172, y=2, h=16)
+                    self.image(str(_logo_render_path), x=152, y=2, w=46, h=18)
                 except Exception:
-                    pass
-            self.set_y(10)
-            self.set_font("Helvetica", "I", 7)
-            self.set_text_color(180, 210, 240)
-            self.cell(90, 5, "Precisely Right.", align="L")
+                    logger.exception("Header logo render failed for %s", _logo_render_path)
             self.set_text_color(*BLACK)
-            self.ln(14)
+            self.ln(24)
 
         def footer(self):
             self.set_y(-22)
@@ -160,8 +203,8 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
 
     pdf = TuvPDF(orientation="P", unit="mm", format="A4")
     pdf.alias_nb_pages()
-    pdf.set_auto_page_break(auto=True, margin=24)
-    pdf.set_margins(15, 22, 15)
+    pdf.set_auto_page_break(auto=True, margin=30)
+    pdf.set_margins(15, 28, 15)
 
     # Section numbering counter
     _sec_counter = [0]
@@ -213,6 +256,42 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
             pdf.cell(indent, 5, "")
             pdf.multi_cell(170, 5, _pdf_safe(str(para)))
             pdf.ln(1)
+
+    def render_image_section(items: list):
+        pdf.set_font("Helvetica", "", 9)
+        for item in items:
+            if isinstance(item, dict):
+                image_path_raw = str(item.get("path") or item.get("image_path") or "").strip()
+                caption = str(item.get("caption") or "").strip()
+                width_mm = float(item.get("width_mm") or 120)
+            else:
+                image_path_raw = str(item or "").strip()
+                caption = ""
+                width_mm = 120
+
+            if not image_path_raw:
+                continue
+
+            image_path = Path(image_path_raw)
+            if not image_path.is_absolute():
+                image_path = DATA_DIR / image_path_raw
+            if not image_path.exists():
+                continue
+
+            width_mm = max(40.0, min(170.0, width_mm))
+            x = (210 - width_mm) / 2.0
+            try:
+                pdf.image(str(image_path), x=x, y=pdf.get_y(), w=width_mm)
+                # move cursor below image with a safe estimate for common image ratios
+                estimated_h = width_mm * 0.65
+                pdf.set_y(pdf.get_y() + estimated_h + 2)
+                if caption:
+                    pdf.set_font("Helvetica", "I", 8)
+                    pdf.cell(0, 4, _pdf_safe(caption), ln=True, align="C")
+                    pdf.set_font("Helvetica", "", 9)
+                pdf.ln(2)
+            except Exception:
+                continue
 
     def render_timeline_table(items: list):
         # Detect format: new multi-col with _col_headers, or legacy task/duration
@@ -336,12 +415,21 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
     pdf.cell(0, 5, _pdf_safe(client.get("Client_Name", "-")), ln=True)
     pdf.set_font("Helvetica", "U", 9)
     location = client.get("Location", "")
-    if location:
+    pincode = client.get("Pincode", "")
+    if location and pincode:
+        pdf.cell(0, 5, _pdf_safe(f"{location} - {pincode}"), ln=True)
+    elif location:
         pdf.cell(0, 5, _pdf_safe(location), ln=True)
+    elif pincode:
+        pdf.cell(0, 5, _pdf_safe(f"Pincode: {pincode}"), ln=True)
     phone_display = client.get("Phone_Number", "")
     if phone_display:
         pdf.set_font("Helvetica", "", 9)
         pdf.cell(0, 5, _pdf_safe(f"Phone: {phone_display}"), ln=True)
+    gst_number = str(client.get("GST_Number", "")).strip()
+    if gst_number:
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(0, 5, _pdf_safe(f"GSTIN: {gst_number}"), ln=True)
     pdf.ln(3)
 
     pdf.set_font("Helvetica", "", 9)
@@ -524,6 +612,8 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
                 render_paragraphs(content)
             elif content_type == "table":
                 render_timeline_table(content)
+            elif content_type == "image":
+                render_image_section(content)
             pdf.ln(3)
 
         # ── Signature block before acknowledgement page ──
@@ -532,6 +622,7 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
             preparer_name = prepared_by.get("full_name", "").strip()
             preparer_designation = prepared_by.get("designation", "").strip()
             preparer_signature: bytes | None = prepared_by.get("signature")
+            signature_applied = False
 
             pdf.set_font("Helvetica", "", 9)
             pdf.cell(0, 5, "Yours sincerely,", ln=True)
@@ -541,12 +632,12 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
 
             sig_y = pdf.get_y()
             if include_signature and preparer_signature:
-                import tempfile
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                     tmp.write(preparer_signature)
                     tmp_path = tmp.name
                 try:
                     pdf.image(tmp_path, x=15, y=sig_y + 1, h=10)
+                    signature_applied = True
                 except Exception:
                     pass
                 finally:
@@ -563,8 +654,16 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
             pdf.set_font("Helvetica", "", 8)
             left_desig = _pdf_safe(preparer_designation) if preparer_designation else "Designation"
             pdf.cell(0, 4, left_desig, ln=True)
+            if not signature_applied:
+                pdf.set_font("Helvetica", "I", 7)
+                pdf.cell(0, 4, _pdf_safe("Note: This is a system-generated quotation; signature is not required."), ln=True)
             pdf.ln(2)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pdf.output(str(output_path))
+    if _logo_temp_path is not None:
+        try:
+            os.unlink(_logo_temp_path)
+        except OSError:
+            pass
     return output_path

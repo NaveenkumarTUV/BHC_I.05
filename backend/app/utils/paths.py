@@ -1,8 +1,9 @@
 import sys
+from datetime import datetime
 from pathlib import Path
 
-# Load environment variable for data directory
-from backend.app.config import DATA_DIR_PATH
+# Load environment variables
+from backend.app.config import DATA_DIR_PATH, EXPORTS_BASE_PATH
 
 
 def get_base_path():
@@ -60,6 +61,75 @@ APP_DIR = BASE_DIR / "backend" / "app"
 DATA_DIR = get_data_dir()
 FRONTEND_DIR = BASE_DIR / "frontend"
 EXPORTS_DIR = DATA_DIR / "exports"
+
+
+def _resolve_exports_base() -> Path:
+    """
+    Return the base exports directory.
+    Uses EXPORTS_BASE_PATH from .env if set and reachable,
+    otherwise falls back to DATA_DIR/exports.
+    """
+    if EXPORTS_BASE_PATH:
+        p = Path(EXPORTS_BASE_PATH)
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        except (OSError, FileNotFoundError):
+            import warnings
+            warnings.warn(
+                f"EXPORTS_BASE_PATH '{EXPORTS_BASE_PATH}' is inaccessible. "
+                f"Falling back to local exports directory.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+    return EXPORTS_DIR
+
+
+def get_dated_export_dir(module: str) -> Path:
+    """
+    Return an export directory organised by year and month.
+    Example: <exports_base>/<module>/2026/04/
+    Directories are created automatically.
+    """
+    now = datetime.now()
+    target = _resolve_exports_base() / module / str(now.year) / f"{now.month:02d}"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def get_dated_quotation_dir() -> Path:
+    """
+    Return quotation export directory organised as:
+    <exports_base>/<year>/<month_name>/
+    Example: <exports_base>/2026/april/
+    Directories are created automatically.
+    """
+    now = datetime.now()
+    month_name = now.strftime("%B").lower()
+    target = _resolve_exports_base() / str(now.year) / month_name
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def get_logo_path() -> Path | None:
+    """
+    Locate the TÜV logo image.
+    When frozen the logo is bundled inside the exe (_MEIPASS/data/assets/).
+    Otherwise falls back to the external data directory.
+    Returns None if not found anywhere.
+    """
+    candidates = []
+    if getattr(sys, 'frozen', False):
+        candidates.append(Path(sys._MEIPASS) / "data" / "assets" / "tuv_logo.png")
+        candidates.append(Path(sys._MEIPASS) / "data" / "assests" / "tuv_logo.png")
+    candidates.append(DATA_DIR / "assets" / "tuv_logo.png")
+    candidates.append(DATA_DIR / "assests" / "tuv_logo.png")
+    candidates.append(DATA_DIR / "tuv_logo.png")
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
+
 
 def ensure_dir(path: Path) -> Path:
     """Create a directory if it does not exist and return the path."""

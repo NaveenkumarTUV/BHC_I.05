@@ -27,6 +27,7 @@ EXPECTED_COLUMNS = [
     "Urgency",
     "GST_Number",
     "PAN_Number",
+    "Pincode",
     "Notes",
 ]
 
@@ -113,6 +114,16 @@ COLUMN_ALIASES: Dict[str, str] = {
     "scope type": "Building_System",
     "area":              "Area_sqft",
     "approximate area":  "Area_sqft",
+    "approximate area (in sqft)": "Area_sqft",
+    "approximate area (in sq.ft)": "Area_sqft",
+    "approximate area (sqft)": "Area_sqft",
+    "approximate area (sq.ft)": "Area_sqft",
+    "approximate area in sqft": "Area_sqft",
+    "approximate area in sq.ft": "Area_sqft",
+    "approximate area (new building)": "Area_sqft_New",
+    "approximate area new building": "Area_sqft_New",
+    "approximate area (old building)": "Area_sqft_Old",
+    "approximate area old building": "Area_sqft_Old",
     "area (sqft)":       "Area_sqft",
     "area_sq.ft":        "Area_sqft",
     "sqft":              "Area_sqft",
@@ -150,7 +161,39 @@ COLUMN_ALIASES: Dict[str, str] = {
     "pan number":        "PAN_Number",
     "pan":               "PAN_Number",
     "pan no":            "PAN_Number",
+    "pincode":           "Pincode",
+    "pin code":          "Pincode",
+    "zip":               "Pincode",
+    "zip code":          "Pincode",
+    "postal code":       "Pincode",
 }
+
+
+def _normalize_header(value: str) -> str:
+    """Normalize a spreadsheet header so alias matching is resilient."""
+    text = str(value or "").strip().lower()
+    text = text.replace("sq.ft", "sq ft").replace("sq. ft", "sq ft").replace("sqft", "sq ft")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+NORMALIZED_COLUMN_ALIASES: Dict[str, str] = {
+    _normalize_header(key): value for key, value in COLUMN_ALIASES.items()
+}
+
+
+def _is_new_building_age(age_value: str) -> bool:
+    """Return True only for explicitly new buildings (not 1-5 year old buildings)."""
+    age_key = str(age_value or "").strip().lower()
+    if not age_key:
+        return False
+
+    # Business rule: "1-5 years" belongs to existing/older building slabs.
+    if any(token in age_key for token in ("1-5", "1 to 5", "1–5", "1—5")):
+        return False
+
+    return any(token in age_key for token in ("new building", "completely new", "brand new", "new"))
 
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -158,8 +201,19 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     rename_map: Dict[str, str] = {}
     for col in df.columns:
         lower = col.strip().lower()
+        normalized = _normalize_header(col)
+
         if lower in COLUMN_ALIASES:
             rename_map[col] = COLUMN_ALIASES[lower]
+            continue
+
+        if normalized in NORMALIZED_COLUMN_ALIASES:
+            rename_map[col] = NORMALIZED_COLUMN_ALIASES[normalized]
+            continue
+
+        # Heuristic fallback for evolving Microsoft Forms area question labels.
+        if "approximate area" in normalized or ("area" in normalized and "sq ft" in normalized):
+            rename_map[col] = "Area_sqft"
     if rename_map:
         df = df.rename(columns=rename_map)
     return df
@@ -199,6 +253,15 @@ def read_clients_from_excel(filepath: Path) -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
     for _, row in df.iterrows():
         record: Dict[str, Any] = {col: str(row.get(col, "")).strip() for col in df.columns}
+
+        # Forms may keep area in separate new/old columns; choose one based on building age.
+        age_text = str(record.get("Building_Age", "")).strip()
+        is_new_building = _is_new_building_age(age_text)
+        area_new = str(record.get("Area_sqft_New", "")).strip()
+        area_old = str(record.get("Area_sqft_Old", "")).strip()
+        if not str(record.get("Area_sqft", "")).strip():
+            record["Area_sqft"] = area_new if is_new_building and area_new else area_old or area_new
+
         inferred_system = _infer_building_system_from_record(record)
         if inferred_system:
             record["Building_System"] = inferred_system
@@ -207,8 +270,18 @@ def read_clients_from_excel(filepath: Path) -> List[Dict[str, Any]]:
             record["_area_numeric"] = float(record.get("Area_sqft", 0) or 0)
         except ValueError:
             area_text = str(record.get("Area_sqft", "")).replace(",", "")
-            nums = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", area_text)]
-            record["_area_numeric"] = max(nums) if nums else 0.0
+            # Prefer explicit ranges like "2001-5000 sq.ft" and use lower bound
+            # so pricing selection is range-driven rather than max-value-driven.
+            range_match = re.search(r"(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)", area_text)
+            if range_match:
+                record["_area_numeric"] = float(range_match.group(1))
+            else:
+                # Ignore currency suffixes like "(₹22000/-)" while extracting area.
+                area_without_currency = re.split(r"[₹$]", area_text, maxsplit=1)[0]
+                nums = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", area_without_currency)]
+                if not nums:
+                    nums = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", area_text)]
+                record["_area_numeric"] = max(nums) if nums else 0.0
         records.append(record)
 
     return records

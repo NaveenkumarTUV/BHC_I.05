@@ -43,7 +43,8 @@ def init_db(db_path: Path) -> None:
                 status TEXT,
                 payment_status TEXT,
                 remarks TEXT,
-                timestamp TEXT
+                timestamp TEXT,
+                pincode TEXT DEFAULT ''
             )
             """
         )
@@ -58,6 +59,8 @@ def init_db(db_path: Path) -> None:
             conn.execute("UPDATE processed_clients SET updated_at = COALESCE(quote_generated_date, '') WHERE updated_at IS NULL")
         if "version" not in columns:
             conn.execute("ALTER TABLE processed_clients ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+        if "pincode" not in columns:
+            conn.execute("ALTER TABLE processed_clients ADD COLUMN pincode TEXT DEFAULT ''")
 
         conn.execute(
             """
@@ -186,6 +189,7 @@ def upsert_processed_client(db_path: Path, record: Dict[str, Any]) -> str:
                     payment_status = ?,
                     remarks = ?,
                     timestamp = ?,
+                    pincode = ?,
                     updated_at = ?,
                     version = COALESCE(version, 1) + 1
                 WHERE enquiry_key = ?
@@ -202,6 +206,7 @@ def upsert_processed_client(db_path: Path, record: Dict[str, Any]) -> str:
                     record.get("payment_status", "Pending"),
                     record.get("remarks", ""),
                     record.get("timestamp", ""),
+                    record.get("pincode", ""),
                     now_iso,
                     record.get("enquiry_key", ""),
                 ),
@@ -212,8 +217,8 @@ def upsert_processed_client(db_path: Path, record: Dict[str, Any]) -> str:
                 INSERT INTO processed_clients (
                     enquiry_id, enquiry_key, client_name, phone, property_type, area,
                     quoted_amount, reference_number, quote_generated_date, status, payment_status,
-                    remarks, timestamp, created_at, updated_at, version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    remarks, timestamp, pincode, created_at, updated_at, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     enquiry_id,
@@ -229,6 +234,7 @@ def upsert_processed_client(db_path: Path, record: Dict[str, Any]) -> str:
                     record.get("payment_status", "Pending"),
                     record.get("remarks", ""),
                     record.get("timestamp", ""),
+                    record.get("pincode", ""),
                     now_iso,
                     now_iso,
                     1,
@@ -245,7 +251,7 @@ def list_processed_clients(db_path: Path) -> List[Dict[str, Any]]:
             """
             SELECT enquiry_id, enquiry_key, client_name, phone, property_type, area,
                    quoted_amount, reference_number, quote_generated_date, status, payment_status,
-                     remarks, timestamp, created_at, updated_at, version
+                     remarks, timestamp, pincode, created_at, updated_at, version
             FROM processed_clients
             ORDER BY quote_generated_date DESC, enquiry_id DESC
             """
@@ -264,7 +270,7 @@ def get_processed_client_by_id(db_path: Path, enquiry_id: str) -> Optional[Dict[
             """
             SELECT enquiry_id, enquiry_key, client_name, phone, property_type, area,
                    quoted_amount, reference_number, quote_generated_date, status, payment_status,
-                     remarks, timestamp, created_at, updated_at, version
+                     remarks, timestamp, pincode, created_at, updated_at, version
             FROM processed_clients
             WHERE enquiry_id = ?
             """,
@@ -349,7 +355,6 @@ def dashboard_summary(db_path: Path, total_enquiries: int, pending: int) -> Dict
         float(r.get("quoted_amount") or 0)
         for r in rows
         if str(r.get("status", "")).lower() == "converted"
-        and str(r.get("payment_status", "")).lower() == "paid"
     )
     return {
         "total_enquiries": int(total_enquiries),

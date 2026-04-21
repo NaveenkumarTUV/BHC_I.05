@@ -31,8 +31,9 @@ from backend.app.services.bhc_config_db import (
     authenticate_user_credentials,
     admin_reset_user_password,
     approve_user,
+    toggle_user_active,
+    toggle_user_admin,
     change_user_password,
-    create_user_account,
     get_admin_config,
     get_config_schema_version,
     get_user_signature,
@@ -76,7 +77,6 @@ from backend.app.services.bhc_workflow_db import (
 )
 from backend.app.services.bhc_pricing_engine import get_pricing_config
 from backend.app.services.bhc_workflow_service import (
-    BHC_EXPORT_DIR,
     LOCAL_ENQUIRY_EXCEL_PATH,
     PROCESSED_DB_PATH,
     build_quote_data,
@@ -87,7 +87,7 @@ from backend.app.services.bhc_workflow_service import (
     safe_filename,
     validate_status_payment_combination,
 )
-from backend.app.utils.paths import DATA_DIR, ensure_dir
+from backend.app.utils.paths import DATA_DIR, ensure_dir, get_dated_export_dir, get_dated_quotation_dir
 
 # ---------------------------------------------------------------------------
 # Router
@@ -160,14 +160,6 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
-class CreateUserRequest(BaseModel):
-    email: str
-    full_name: str
-    password: str
-    is_admin: bool = False
-    designation: str = ""
-
-
 class RegisterRequest(BaseModel):
     email: str
     full_name: str
@@ -184,6 +176,16 @@ class AdminResetPasswordRequest(BaseModel):
 
 class ApproveUserRequest(BaseModel):
     email: str
+
+
+class ToggleUserActiveRequest(BaseModel):
+    email: str
+    is_active: bool
+
+
+class ToggleUserAdminRequest(BaseModel):
+    email: str
+    is_admin: bool
 
 
 class CompanySettingsRequest(BaseModel):
@@ -420,6 +422,7 @@ async def get_clients_compat(request: Request):
             "area_sqft": c.get("area_sqft", ""),
             "building_age": c.get("building_age", ""),
             "urgency": c.get("urgency", ""),
+            "pincode": c.get("pincode", ""),
             "timestamp": c.get("timestamp", ""),
             "enquiry_key": c.get("enquiry_key", ""),
         }
@@ -443,6 +446,7 @@ async def get_client(request: Request, name: str, phone: Optional[str] = None, t
         "Building_Age": c.get("building_age", ""),
         "Urgency": c.get("urgency", ""),
         "Notes": c.get("notes", ""),
+        "Pincode": c.get("pincode", ""),
         "Timestamp": c.get("timestamp", ""),
         "_area_numeric": c.get("area_numeric", 0),
     }
@@ -464,33 +468,11 @@ async def generate_quote(body: GenerateQuoteRequest, request: Request):
         discount_percent=body.discount_percent,
     )
 
-    enquiry_key = quote_data.get("enquiry_key", "")
-    enquiry_id = str(uuid.uuid4())
-
-    persisted_id = upsert_processed_client(
-        PROCESSED_DB_PATH,
-        {
-            "enquiry_id": enquiry_id,
-            "enquiry_key": enquiry_key,
-            "client_name": quote_data["client"].get("Client_Name", ""),
-            "phone": quote_data["client"].get("Phone_Number", ""),
-            "property_type": quote_data["client"].get("Property_Type", ""),
-            "area": quote_data["pricing"].get("area_sqft", 0),
-            "quoted_amount": quote_data["pricing"].get("total_with_gst", 0),
-            "reference_number": quote_data.get("reference_number", ""),
-            "quote_generated_date": quote_data["generated_at"],
-            "status": "Quoted",
-            "payment_status": "Pending",
-            "remarks": "",
-            "timestamp": quote_data["client"].get("Timestamp", ""),
-        },
-    )
-
     log_workflow_audit_event(
         PROCESSED_DB_PATH,
-        event_type="QUOTE_GENERATED",
+        event_type="QUOTE_DRAFT_GENERATED",
         actor_email=user.get("email", ""),
-        enquiry_id=persisted_id,
+        enquiry_id="",
         severity="INFO",
         metadata={
             "client_name": quote_data["client"].get("Client_Name", ""),
@@ -499,7 +481,6 @@ async def generate_quote(body: GenerateQuoteRequest, request: Request):
         },
     )
 
-    quote_data["enquiry_id"] = persisted_id
     return quote_data
 
 
@@ -716,30 +697,6 @@ async def admin_users(request: Request):
     return {"users": list_user_accounts(), "admin_email": DEFAULT_ADMIN_EMAIL}
 
 
-@router.post("/admin/users")
-async def admin_create_user(body: CreateUserRequest, request: Request):
-    admin_user = ensure_admin(request)
-    try:
-        user = create_user_account(
-            email=body.email,
-            full_name=body.full_name,
-            password=body.password,
-            is_admin=body.is_admin,
-            created_by=admin_user["email"],
-            designation=body.designation,
-        )
-        log_security_audit_event(
-            event_type="ADMIN_USER_CREATED",
-            actor_email=admin_user.get("email", ""),
-            target=body.email,
-            severity="INFO",
-            metadata={"is_admin": bool(body.is_admin)},
-        )
-        return {"message": "User created successfully.", "user": user}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
 @router.post("/admin/users/approve")
 async def admin_approve_user(body: ApproveUserRequest, request: Request):
     admin_user = ensure_admin(request)
@@ -768,6 +725,44 @@ async def admin_reset_password(body: AdminResetPasswordRequest, request: Request
             severity="WARN",
         )
         return {"message": f"Password reset for {body.email}.", "user": user}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/admin/users/toggle-active")
+async def admin_toggle_active(body: ToggleUserActiveRequest, request: Request):
+    admin_user = ensure_admin(request)
+    try:
+        user = toggle_user_active(body.email, body.is_active)
+        log_security_audit_event(
+            event_type="ADMIN_USER_STATUS_CHANGED",
+            actor_email=admin_user.get("email", ""),
+            target=body.email,
+            severity="WARN",
+            metadata={"is_active": body.is_active},
+        )
+        status = "activated" if body.is_active else "deactivated"
+        return {"message": f"User {body.email} has been {status}.", "user": user}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/admin/users/toggle-admin")
+async def admin_toggle_admin(body: ToggleUserAdminRequest, request: Request):
+    admin_user = ensure_admin(request)
+    if body.email == admin_user.get("email"):
+        raise HTTPException(status_code=400, detail="You cannot change your own admin status.")
+    try:
+        user = toggle_user_admin(body.email, body.is_admin)
+        log_security_audit_event(
+            event_type="ADMIN_USER_ROLE_CHANGED",
+            actor_email=admin_user.get("email", ""),
+            target=body.email,
+            severity="WARN",
+            metadata={"is_admin": body.is_admin},
+        )
+        role = "admin" if body.is_admin else "user"
+        return {"message": f"User {body.email} role set to {role}.", "user": user}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -955,6 +950,30 @@ async def admin_reorder_quotation_sections(body: QuotationSectionReorderRequest,
     return {"quotation_sections": sections}
 
 
+@router.post("/admin/quotation-sections/upload-image")
+async def admin_upload_quotation_section_image(request: Request, file: UploadFile = File(...)):
+    ensure_admin(request)
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise HTTPException(status_code=400, detail="Image must be PNG, JPG, JPEG, or WEBP.")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
+    if len(data) > 2_000_000:
+        raise HTTPException(status_code=400, detail="Image must be under 2 MB.")
+
+    assets_dir = ensure_dir(DATA_DIR / "assets" / "quotation_sections")
+    filename = f"qs_{uuid.uuid4().hex}{suffix}"
+    out = assets_dir / filename
+    out.write_bytes(data)
+
+    return {
+        "message": "Image uploaded.",
+        "image_path": f"assets/quotation_sections/{filename}",
+    }
+
+
 @router.put("/admin/quotation-sections/{section_id}")
 async def admin_update_quotation_section(section_id: int, body: QuotationSectionUpdateRequest, request: Request):
     admin_user = ensure_admin(request)
@@ -1018,7 +1037,7 @@ async def export_processed_clients(
     if not rows:
         raise HTTPException(status_code=404, detail="No processed client data available for the selected filters.")
 
-    ensure_dir(BHC_EXPORT_DIR)
+    bhc_export = get_dated_export_dir("bhc")
     has_filters = any(
         [
             (search or "").strip(),
@@ -1031,7 +1050,7 @@ async def export_processed_clients(
     )
     filename_suffix = "_Filtered" if has_filters else ""
     filename = f"BHC_Processed_Clients{filename_suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    output_path = BHC_EXPORT_DIR / filename
+    output_path = bhc_export / filename
 
     df = pd.DataFrame(rows)
 
@@ -1106,14 +1125,48 @@ async def download_pdf(body: DownloadRequest, request: Request):
         "signature": get_user_signature(current_user["email"]),
     }
 
-    ensure_dir(BHC_EXPORT_DIR)
+    bhc_export = get_dated_quotation_dir()
     filename = safe_filename(quote_data.get("reference_number", body.client_name), "pdf")
-    output_path = BHC_EXPORT_DIR / filename
+    output_path = bhc_export / filename
 
     try:
         generate_quote_pdf(quote_data, output_path, include_signature=body.include_signature)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}")
+
+    persisted_id = upsert_processed_client(
+        PROCESSED_DB_PATH,
+        {
+            "enquiry_id": str(uuid.uuid4()),
+            "enquiry_key": quote_data.get("enquiry_key", ""),
+            "client_name": quote_data["client"].get("Client_Name", ""),
+            "phone": quote_data["client"].get("Phone_Number", ""),
+            "property_type": quote_data["client"].get("Property_Type", ""),
+            "area": quote_data["pricing"].get("area_sqft", 0),
+            "quoted_amount": quote_data["pricing"].get("total_with_gst", 0),
+            "reference_number": quote_data.get("reference_number", ""),
+            "quote_generated_date": quote_data.get("generated_at", datetime.now().isoformat()),
+            "status": "Quoted",
+            "payment_status": "Pending",
+            "remarks": "",
+            "timestamp": quote_data["client"].get("Timestamp", ""),
+            "pincode": quote_data["client"].get("Pincode", ""),
+        },
+    )
+
+    log_workflow_audit_event(
+        PROCESSED_DB_PATH,
+        event_type="QUOTE_DOWNLOADED",
+        actor_email=current_user.get("email", ""),
+        enquiry_id=persisted_id,
+        severity="INFO",
+        metadata={
+            "client_name": quote_data["client"].get("Client_Name", ""),
+            "reference_number": quote_data.get("reference_number", ""),
+            "quoted_amount": quote_data["pricing"].get("total_with_gst", 0),
+            "output_path": str(output_path),
+        },
+    )
 
     return StreamingResponse(
         io.BytesIO(output_path.read_bytes()),
@@ -1144,9 +1197,9 @@ async def preview_pdf(body: DownloadRequest, request: Request):
         "signature": get_user_signature(current_user["email"]),
     }
 
-    ensure_dir(BHC_EXPORT_DIR)
+    bhc_export = get_dated_quotation_dir()
     filename = safe_filename(quote_data.get("reference_number", body.client_name), "pdf")
-    output_path = BHC_EXPORT_DIR / f"preview_{filename}"
+    output_path = bhc_export / f"preview_{filename}"
 
     try:
         generate_quote_pdf(quote_data, output_path, include_signature=False)
@@ -1188,9 +1241,9 @@ async def download_email_draft(body: EmailDraftRequest, request: Request):
         "signature": get_user_signature(current_user["email"]),
     }
 
-    ensure_dir(BHC_EXPORT_DIR)
+    bhc_export = get_dated_quotation_dir()
     attachment_filename = safe_filename(quote_data.get("reference_number", body.client_name), "pdf")
-    attachment_path = BHC_EXPORT_DIR / attachment_filename
+    attachment_path = bhc_export / attachment_filename
 
     try:
         generate_quote_pdf(quote_data, attachment_path)

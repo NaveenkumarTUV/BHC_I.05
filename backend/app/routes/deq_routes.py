@@ -44,13 +44,12 @@ from backend.app.services.deq_db import (
     update_deq_record,
 )
 from backend.app.services.deq_output_generator import generate_deq_pdf
-from backend.app.services.bhc_workflow_service import PROCESSED_DB_PATH, BHC_EXPORT_DIR, safe_filename
-from backend.app.utils.paths import DATA_DIR, EXPORTS_DIR, ensure_dir
+from backend.app.services.bhc_workflow_service import PROCESSED_DB_PATH, safe_filename
+from backend.app.utils.paths import get_dated_export_dir
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-DEQ_EXPORT_DIR = EXPORTS_DIR / "deq"
 DEQ_DB_PATH = PROCESSED_DB_PATH  # DEQ records live in the same DB file as BHC
 
 
@@ -143,7 +142,6 @@ def _validate_status_payment(status: str | None, payment: str | None) -> None:
 @router.get("/pipeline")
 async def list_deq_pipeline(request: Request):
     _ensure_auth(request)
-    ensure_dir(DEQ_EXPORT_DIR)
     init_deq_db(DEQ_DB_PATH)
     rows = list_deq_records(DEQ_DB_PATH)
     return {"count": len(rows), "records": rows}
@@ -156,7 +154,6 @@ async def create_deq(body: DeqCreateRequest, request: Request):
         raise HTTPException(status_code=400, detail="Client name is required.")
     if body.deq_quoted_amount < 0:
         raise HTTPException(status_code=400, detail="DEQ quoted amount cannot be negative.")
-    ensure_dir(DEQ_EXPORT_DIR)
     record = create_deq_record(DEQ_DB_PATH, body.model_dump())
     log_workflow_audit_event(
         DEQ_DB_PATH,
@@ -261,10 +258,10 @@ async def download_deq_pdf(deq_id: str, request: Request):
         },
     }
 
-    ensure_dir(DEQ_EXPORT_DIR)
+    deq_export = get_dated_export_dir("deq")
     filename = safe_filename(record.get("deq_reference_number", record["id"]), "pdf")
     filename = f"DEQ_{filename}"
-    output_path = DEQ_EXPORT_DIR / filename
+    output_path = deq_export / filename
 
     try:
         generate_deq_pdf(deq_data, output_path, include_signature=True)
@@ -299,9 +296,9 @@ async def export_deq_pipeline(request: Request):
     if not rows:
         raise HTTPException(status_code=404, detail="No DEQ records available for export.")
 
-    ensure_dir(DEQ_EXPORT_DIR)
+    deq_export = get_dated_export_dir("deq")
     filename = f"DEQ_Pipeline_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    output_path = DEQ_EXPORT_DIR / filename
+    output_path = deq_export / filename
 
     df = pd.DataFrame(rows)
     ordered_cols = [

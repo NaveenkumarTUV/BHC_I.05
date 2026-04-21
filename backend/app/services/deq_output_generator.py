@@ -76,10 +76,9 @@ def generate_deq_pdf(
     LIGHT_BG = (235, 243, 250)
     TABLE_STRIPE = (245, 248, 252)
 
-    _logo_path = Path(__file__).resolve().parents[3] / "data" / "assests" / "tuv_logo.png"
-    if not _logo_path.exists():
-        _logo_path = output_path.parent.parent / "tuv_logo.png"
-    logo_available = _logo_path.exists()
+    from backend.app.utils.paths import get_logo_path
+    _logo_path = get_logo_path()
+    logo_available = _logo_path is not None
 
     company_short = company_settings["company_name"]
 

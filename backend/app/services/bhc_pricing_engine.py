@@ -1,5 +1,6 @@
 """Pricing engine for Building Health Checkup service."""
 
+import re
 from typing import Dict, Any, Optional, List
 
 from backend.app.services.bhc_config_db import (
@@ -100,6 +101,58 @@ def _find_slab(area_sqft: float, slab_category: str = SLAB_CATEGORY_STANDARD) ->
     )
 
 
+def _parse_area_range(area_value: Any) -> tuple[float, float] | None:
+    """Parse ranges like '25,001-50,000 Sq.ft' and return (min, max)."""
+    text = str(area_value or "").replace(",", "")
+    match = re.search(r"(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)", text)
+    if not match:
+        return None
+    lo = float(match.group(1))
+    hi = float(match.group(2))
+    return (lo, hi) if lo <= hi else (hi, lo)
+
+
+def _find_slab_from_area_input(
+    area_sqft: float,
+    client_context: Optional[Dict[str, Any]],
+    slab_category: str,
+) -> tuple[Dict[str, float | int | str | None], float]:
+    """
+    Resolve slab by explicit area range text first (if provided), else numeric area.
+    Returns (slab, numeric_area_for_reporting).
+    """
+    area_text = ""
+    if client_context:
+        area_text = str(client_context.get("Area_sqft", "") or "")
+
+    parsed = _parse_area_range(area_text)
+    if parsed:
+        low, high = parsed
+        for slab in get_pricing_config(slab_category):
+            min_area = float(slab["min_area"])
+            max_area = float(slab["max_area"])
+            if min_area <= low and high <= max_area:
+                return slab, low
+        # Fallback if admin slab boundaries are slightly different.
+        return _find_slab(low, slab_category), low
+
+    numeric_area = float(area_sqft or 0)
+    return _find_slab(numeric_area, slab_category), numeric_area
+
+
+def _is_new_building_age(building_age: Optional[str]) -> bool:
+    """Return True only for explicitly new buildings (not 1-5 year old buildings)."""
+    age_key = str(building_age or "").strip().lower()
+    if not age_key:
+        return False
+
+    # Business rule: 1-5 years should use existing/older building pricing slabs.
+    if any(token in age_key for token in ("1-5", "1 to 5", "1–5", "1—5")):
+        return False
+
+    return any(token in age_key for token in ("new building", "completely new", "brand new", "new"))
+
+
 def _infer_scope_type(property_type: str, client_context: Optional[Dict[str, Any]]) -> str:
     if client_context:
         explicit_system = str(client_context.get("Building_System", "") or "").strip().lower()
@@ -165,16 +218,11 @@ def calculate_quote(
     scope_type = _infer_scope_type(property_type, client_context)
 
     # ── Determine if new building ────────────────────────────
-    NEW_CONSTRUCTION_LABEL = "new construction (0-5 years)"
-    is_new_building = False
-    if building_age:
-        age_key = str(building_age).strip().lower()
-        if age_key == NEW_CONSTRUCTION_LABEL:
-            is_new_building = True
+    is_new_building = _is_new_building_age(building_age)
 
     # ── Select slab from the correct category ────────────────
     slab_category = SLAB_CATEGORY_NEW_BUILDING if is_new_building else SLAB_CATEGORY_STANDARD
-    slab = _find_slab(area_sqft, slab_category)
+    slab, resolved_area_sqft = _find_slab_from_area_input(area_sqft, client_context, slab_category)
     quoted_price = float(slab["quoted_price"])
     slab_label = str(slab["label"])
 
@@ -239,7 +287,7 @@ def calculate_quote(
         "structure_type":     structure_type,
         "building_system":    client_context.get("Building_System", structure_type) if client_context else structure_type,
         "property_type":      property_type,
-        "area_sqft":          area_sqft,
+        "area_sqft":          resolved_area_sqft,
         "pricing_model":      "area_slab",
         "area_slab":          slab_label,
         "slab_min_area":      slab["min_area"],
