@@ -9,10 +9,8 @@
 # ============================================================================
 build/
 dist/
-*.spec
 PortableApp/
-build_portable.ps1
-run_portable.py
+*.zip
 __pycache__/
 .pytest_cache/
 *.py[cod]

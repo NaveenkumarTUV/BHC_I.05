@@ -214,6 +214,7 @@ def read_workflow_clients(*, force_refresh: bool = False) -> list[dict[str, Any]
                 "urgency": client.get("Urgency", ""),
                 "gst_number": client.get("GST_Number", ""),
                 "pan_number": client.get("PAN_Number", ""),
+                "pincode": client.get("Pincode", ""),
                 "notes": client.get("Notes", ""),
                 "timestamp": client.get("Timestamp", ""),
                 "enquiry_key": client_enquiry_key(client, row_index),
@@ -291,7 +292,10 @@ def build_quote_data(
         "Issue_Observed": client_row.get("issue_observed", ""),
         "Building_Age": building_age_value,
         "Urgency": client_row.get("urgency", ""),
+        "GST_Number": client_row.get("gst_number", ""),
+        "PAN_Number": client_row.get("pan_number", ""),
         "Notes": client_row.get("notes", ""),
+        "Pincode": client_row.get("pincode", ""),
         "Timestamp": client_row.get("timestamp", ""),
         "_area_numeric": area_value,
     }

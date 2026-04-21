@@ -1272,7 +1272,7 @@ def create_quotation_section(
     heading = str(heading).strip()
     if not heading:
         raise ValueError("Heading is required.")
-    allowed_types = {"list", "paragraph", "table", "dynamic"}
+    allowed_types = {"list", "paragraph", "table", "dynamic", "image"}
     if content_type not in allowed_types:
         raise ValueError(f"Invalid content_type. Must be one of: {', '.join(sorted(allowed_types))}.")
     content_json = json.dumps(content or [], ensure_ascii=True)
@@ -1326,7 +1326,7 @@ def update_quotation_section(
             updates.append("is_visible = ?")
             params.append(1 if is_visible else 0)
         if content_type is not None:
-            allowed_types = {"list", "paragraph", "table", "dynamic"}
+            allowed_types = {"list", "paragraph", "table", "dynamic", "image"}
             if content_type not in allowed_types:
                 raise ValueError(f"Invalid content_type. Must be one of: {', '.join(sorted(allowed_types))}.")
             updates.append("content_type = ?")
@@ -1901,7 +1901,7 @@ def create_deq_section(
     heading = str(heading).strip()
     if not heading:
         raise ValueError("Heading is required.")
-    allowed_types = {"list", "paragraph", "table", "dynamic"}
+    allowed_types = {"list", "paragraph", "table", "dynamic", "image"}
     if content_type not in allowed_types:
         raise ValueError(f"Invalid content_type. Must be one of: {', '.join(sorted(allowed_types))}.")
     content_json = json.dumps(content or [], ensure_ascii=True)
@@ -1952,7 +1952,7 @@ def update_deq_section(
             updates.append("is_visible = ?")
             params.append(1 if is_visible else 0)
         if content_type is not None:
-            allowed_types = {"list", "paragraph", "table", "dynamic"}
+            allowed_types = {"list", "paragraph", "table", "dynamic", "image"}
             if content_type not in allowed_types:
                 raise ValueError(f"Invalid content_type. Must be one of: {', '.join(sorted(allowed_types))}.")
             updates.append("content_type = ?")

@@ -97,6 +97,40 @@ def get_dated_export_dir(module: str) -> Path:
     return target
 
 
+def get_dated_quotation_dir() -> Path:
+    """
+    Return quotation export directory organised as:
+    <exports_base>/<year>/<month_name>/
+    Example: <exports_base>/2026/april/
+    Directories are created automatically.
+    """
+    now = datetime.now()
+    month_name = now.strftime("%B").lower()
+    target = _resolve_exports_base() / str(now.year) / month_name
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def get_logo_path() -> Path | None:
+    """
+    Locate the TÜV logo image.
+    When frozen the logo is bundled inside the exe (_MEIPASS/data/assets/).
+    Otherwise falls back to the external data directory.
+    Returns None if not found anywhere.
+    """
+    candidates = []
+    if getattr(sys, 'frozen', False):
+        candidates.append(Path(sys._MEIPASS) / "data" / "assets" / "tuv_logo.png")
+        candidates.append(Path(sys._MEIPASS) / "data" / "assests" / "tuv_logo.png")
+    candidates.append(DATA_DIR / "assets" / "tuv_logo.png")
+    candidates.append(DATA_DIR / "assests" / "tuv_logo.png")
+    candidates.append(DATA_DIR / "tuv_logo.png")
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
+
+
 def ensure_dir(path: Path) -> Path:
     """Create a directory if it does not exist and return the path."""
     path.mkdir(parents=True, exist_ok=True)

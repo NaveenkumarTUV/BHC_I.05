@@ -87,7 +87,7 @@ from backend.app.services.bhc_workflow_service import (
     safe_filename,
     validate_status_payment_combination,
 )
-from backend.app.utils.paths import DATA_DIR, ensure_dir, get_dated_export_dir
+from backend.app.utils.paths import DATA_DIR, ensure_dir, get_dated_export_dir, get_dated_quotation_dir
 
 # ---------------------------------------------------------------------------
 # Router
@@ -422,6 +422,7 @@ async def get_clients_compat(request: Request):
             "area_sqft": c.get("area_sqft", ""),
             "building_age": c.get("building_age", ""),
             "urgency": c.get("urgency", ""),
+            "pincode": c.get("pincode", ""),
             "timestamp": c.get("timestamp", ""),
             "enquiry_key": c.get("enquiry_key", ""),
         }
@@ -445,6 +446,7 @@ async def get_client(request: Request, name: str, phone: Optional[str] = None, t
         "Building_Age": c.get("building_age", ""),
         "Urgency": c.get("urgency", ""),
         "Notes": c.get("notes", ""),
+        "Pincode": c.get("pincode", ""),
         "Timestamp": c.get("timestamp", ""),
         "_area_numeric": c.get("area_numeric", 0),
     }
@@ -466,33 +468,11 @@ async def generate_quote(body: GenerateQuoteRequest, request: Request):
         discount_percent=body.discount_percent,
     )
 
-    enquiry_key = quote_data.get("enquiry_key", "")
-    enquiry_id = str(uuid.uuid4())
-
-    persisted_id = upsert_processed_client(
-        PROCESSED_DB_PATH,
-        {
-            "enquiry_id": enquiry_id,
-            "enquiry_key": enquiry_key,
-            "client_name": quote_data["client"].get("Client_Name", ""),
-            "phone": quote_data["client"].get("Phone_Number", ""),
-            "property_type": quote_data["client"].get("Property_Type", ""),
-            "area": quote_data["pricing"].get("area_sqft", 0),
-            "quoted_amount": quote_data["pricing"].get("total_with_gst", 0),
-            "reference_number": quote_data.get("reference_number", ""),
-            "quote_generated_date": quote_data["generated_at"],
-            "status": "Quoted",
-            "payment_status": "Pending",
-            "remarks": "",
-            "timestamp": quote_data["client"].get("Timestamp", ""),
-        },
-    )
-
     log_workflow_audit_event(
         PROCESSED_DB_PATH,
-        event_type="QUOTE_GENERATED",
+        event_type="QUOTE_DRAFT_GENERATED",
         actor_email=user.get("email", ""),
-        enquiry_id=persisted_id,
+        enquiry_id="",
         severity="INFO",
         metadata={
             "client_name": quote_data["client"].get("Client_Name", ""),
@@ -501,7 +481,6 @@ async def generate_quote(body: GenerateQuoteRequest, request: Request):
         },
     )
 
-    quote_data["enquiry_id"] = persisted_id
     return quote_data
 
 
@@ -971,6 +950,30 @@ async def admin_reorder_quotation_sections(body: QuotationSectionReorderRequest,
     return {"quotation_sections": sections}
 
 
+@router.post("/admin/quotation-sections/upload-image")
+async def admin_upload_quotation_section_image(request: Request, file: UploadFile = File(...)):
+    ensure_admin(request)
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise HTTPException(status_code=400, detail="Image must be PNG, JPG, JPEG, or WEBP.")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
+    if len(data) > 2_000_000:
+        raise HTTPException(status_code=400, detail="Image must be under 2 MB.")
+
+    assets_dir = ensure_dir(DATA_DIR / "assets" / "quotation_sections")
+    filename = f"qs_{uuid.uuid4().hex}{suffix}"
+    out = assets_dir / filename
+    out.write_bytes(data)
+
+    return {
+        "message": "Image uploaded.",
+        "image_path": f"assets/quotation_sections/{filename}",
+    }
+
+
 @router.put("/admin/quotation-sections/{section_id}")
 async def admin_update_quotation_section(section_id: int, body: QuotationSectionUpdateRequest, request: Request):
     admin_user = ensure_admin(request)
@@ -1122,7 +1125,7 @@ async def download_pdf(body: DownloadRequest, request: Request):
         "signature": get_user_signature(current_user["email"]),
     }
 
-    bhc_export = get_dated_export_dir("bhc")
+    bhc_export = get_dated_quotation_dir()
     filename = safe_filename(quote_data.get("reference_number", body.client_name), "pdf")
     output_path = bhc_export / filename
 
@@ -1130,6 +1133,40 @@ async def download_pdf(body: DownloadRequest, request: Request):
         generate_quote_pdf(quote_data, output_path, include_signature=body.include_signature)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}")
+
+    persisted_id = upsert_processed_client(
+        PROCESSED_DB_PATH,
+        {
+            "enquiry_id": str(uuid.uuid4()),
+            "enquiry_key": quote_data.get("enquiry_key", ""),
+            "client_name": quote_data["client"].get("Client_Name", ""),
+            "phone": quote_data["client"].get("Phone_Number", ""),
+            "property_type": quote_data["client"].get("Property_Type", ""),
+            "area": quote_data["pricing"].get("area_sqft", 0),
+            "quoted_amount": quote_data["pricing"].get("total_with_gst", 0),
+            "reference_number": quote_data.get("reference_number", ""),
+            "quote_generated_date": quote_data.get("generated_at", datetime.now().isoformat()),
+            "status": "Quoted",
+            "payment_status": "Pending",
+            "remarks": "",
+            "timestamp": quote_data["client"].get("Timestamp", ""),
+            "pincode": quote_data["client"].get("Pincode", ""),
+        },
+    )
+
+    log_workflow_audit_event(
+        PROCESSED_DB_PATH,
+        event_type="QUOTE_DOWNLOADED",
+        actor_email=current_user.get("email", ""),
+        enquiry_id=persisted_id,
+        severity="INFO",
+        metadata={
+            "client_name": quote_data["client"].get("Client_Name", ""),
+            "reference_number": quote_data.get("reference_number", ""),
+            "quoted_amount": quote_data["pricing"].get("total_with_gst", 0),
+            "output_path": str(output_path),
+        },
+    )
 
     return StreamingResponse(
         io.BytesIO(output_path.read_bytes()),
@@ -1160,7 +1197,7 @@ async def preview_pdf(body: DownloadRequest, request: Request):
         "signature": get_user_signature(current_user["email"]),
     }
 
-    bhc_export = get_dated_export_dir("bhc")
+    bhc_export = get_dated_quotation_dir()
     filename = safe_filename(quote_data.get("reference_number", body.client_name), "pdf")
     output_path = bhc_export / f"preview_{filename}"
 
@@ -1204,7 +1241,7 @@ async def download_email_draft(body: EmailDraftRequest, request: Request):
         "signature": get_user_signature(current_user["email"]),
     }
 
-    bhc_export = get_dated_export_dir("bhc")
+    bhc_export = get_dated_quotation_dir()
     attachment_filename = safe_filename(quote_data.get("reference_number", body.client_name), "pdf")
     attachment_path = bhc_export / attachment_filename
 
