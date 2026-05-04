@@ -14,6 +14,24 @@ from backend.app.config import BHC_CONFIG_DB_PATH
 from backend.app.utils.paths import DATA_DIR
 
 ALLOWED_EMAIL_DOMAIN = "@ind.tuv.com"
+
+# ---------------------------------------------------------------------------
+# In-memory read caches — dramatically reduces network DB round-trips
+# ---------------------------------------------------------------------------
+_cache_company: dict | None = None
+_cache_document: dict | None = None
+_cache_sections: list | None = None
+
+
+def _invalidate_settings_cache() -> None:
+    global _cache_company, _cache_document
+    _cache_company = None
+    _cache_document = None
+
+
+def _invalidate_sections_cache() -> None:
+    global _cache_sections
+    _cache_sections = None
 DEFAULT_ADMIN_EMAIL = "m.naveenkumar@ind.tuv.com"
 DEFAULT_ADMIN_NAME = "Naveen kumar"
 DEFAULT_ADMIN_DESIGNATION = "AI Solution Architect"
@@ -977,8 +995,12 @@ def _settings_by_keys(keys: list[str]) -> dict[str, Any]:
 
 
 def get_company_settings() -> dict[str, str]:
+    global _cache_company
+    if _cache_company is not None:
+        return _cache_company
     keys = list(DEFAULT_COMPANY_SETTINGS.keys())
-    return {key: str(value) for key, value in _settings_by_keys(keys).items()}
+    _cache_company = {key: str(value) for key, value in _settings_by_keys(keys).items()}
+    return _cache_company
 
 
 def get_urgency_surcharge_percent() -> float:
@@ -1030,12 +1052,17 @@ def update_company_settings(settings: dict[str, Any]) -> dict[str, str]:
                 (key, value),
             )
         conn.commit()
+    _invalidate_settings_cache()
     return get_company_settings()
 
 
 def get_document_settings() -> dict[str, Any]:
+    global _cache_document
+    if _cache_document is not None:
+        return _cache_document
     keys = list(DEFAULT_DOCUMENT_SETTINGS.keys())
-    return _settings_by_keys(keys)
+    _cache_document = _settings_by_keys(keys)
+    return _cache_document
 
 
 def update_document_settings(settings: dict[str, Any]) -> dict[str, Any]:
@@ -1050,6 +1077,7 @@ def update_document_settings(settings: dict[str, Any]) -> dict[str, Any]:
                 (key, serialized_value),
             )
         conn.commit()
+    _invalidate_settings_cache()
     return get_document_settings()
 
 
@@ -1245,13 +1273,17 @@ def _row_to_section(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def list_quotation_sections() -> list[dict[str, Any]]:
+    global _cache_sections
+    if _cache_sections is not None:
+        return _cache_sections
     resolved_path = get_config_db_path()
     init_config_db(resolved_path)
     with _connect(resolved_path) as conn:
         rows = conn.execute(
             "SELECT * FROM quotation_sections ORDER BY sort_order ASC, id ASC"
         ).fetchall()
-    return [_row_to_section(row) for row in rows]
+    _cache_sections = [_row_to_section(row) for row in rows]
+    return _cache_sections
 
 
 def get_quotation_section(section_id: int) -> dict[str, Any] | None:
@@ -1295,6 +1327,7 @@ def create_quotation_section(
         new_row = conn.execute(
             "SELECT * FROM quotation_sections WHERE section_key = ?", (section_key,)
         ).fetchone()
+    _invalidate_sections_cache()
     return _row_to_section(new_row)
 
 
@@ -1340,6 +1373,7 @@ def update_quotation_section(
                 params,
             )
             conn.commit()
+    _invalidate_sections_cache()
     return get_quotation_section(section_id)
 
 
@@ -1354,6 +1388,7 @@ def delete_quotation_section(section_id: int) -> bool:
             raise ValueError("System sections cannot be deleted. You can hide them instead.")
         conn.execute("DELETE FROM quotation_sections WHERE id = ?", (section_id,))
         conn.commit()
+    _invalidate_sections_cache()
     return True
 
 
@@ -1368,6 +1403,7 @@ def reorder_quotation_sections(ordered_ids: list[int]) -> list[dict[str, Any]]:
                 ((idx + 1) * 10, now, section_id),
             )
         conn.commit()
+    _invalidate_sections_cache()
     return list_quotation_sections()
 
 
