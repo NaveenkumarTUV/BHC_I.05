@@ -16,9 +16,81 @@ from pathlib import Path
 from typing import Dict, Any
 
 from backend.app.services.bhc_config_db import get_company_settings, get_document_settings, list_quotation_sections
+from backend.app.utils.paths import DATA_DIR
 
 REFERENCE_PREFIX = "BEN-HC-TUVR"
 logger = logging.getLogger("bhc.output")
+
+# ---------------------------------------------------------------------------
+# Module-level image caches — convert each file to PNG only once per process
+# ---------------------------------------------------------------------------
+
+_CACHED_LOGO_PATH: Path | None = None          # set once by _build_logo_cache()
+_IMAGE_PNG_CACHE: dict[str, str] = {}          # source_path_str -> temp_png_path_str
+
+
+def _build_logo_cache() -> None:
+    """Search for the header logo and pre-convert it to PNG once at startup."""
+    global _CACHED_LOGO_PATH
+    import sys as _sys
+    from PIL import Image as _PIL
+
+    search_dirs: list[Path] = []
+    if getattr(_sys, "frozen", False):
+        search_dirs.append(Path(_sys._MEIPASS) / "data" / "assets")
+    search_dirs.append(DATA_DIR / "assets")
+
+    logo_source: Path | None = None
+    for d in search_dirs:
+        for name in ("quotation_logo.jpg", "quotation_logo.png", "tuv_logo.jpg", "tuv_logo.png"):
+            candidate = d / name
+            if candidate.exists():
+                logo_source = candidate
+                break
+        if logo_source is not None:
+            break
+
+    if logo_source is None:
+        logger.warning("Header logo not found in data/assets/")
+        return
+
+    try:
+        im = _PIL.open(logo_source).convert("RGB")
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        tmp_name = tmp.name
+        tmp.close()
+        im.save(tmp_name, format="PNG")
+        im.close()
+        _CACHED_LOGO_PATH = Path(tmp_name)
+        logger.info("Logo pre-converted to PNG -> %s", tmp_name)
+    except Exception:
+        logger.exception("Logo PNG pre-conversion failed; logo will be skipped")
+
+
+def _get_image_png(source_path: Path) -> str | None:
+    """Return path to a PNG-converted temp file for *source_path*, caching the result."""
+    key = str(source_path)
+    cached = _IMAGE_PNG_CACHE.get(key)
+    if cached and Path(cached).exists():
+        return cached
+
+    try:
+        from PIL import Image as _PIL
+        im = _PIL.open(source_path).convert("RGB")
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        tmp_name = tmp.name
+        tmp.close()
+        im.save(tmp_name, format="PNG")
+        im.close()
+        _IMAGE_PNG_CACHE[key] = tmp_name
+        return tmp_name
+    except Exception:
+        logger.warning("Could not convert image to PNG: %s", source_path)
+        return None
+
+
+# Run logo cache immediately on module import
+_build_logo_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -114,45 +186,8 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
     LIGHT_BG = (235, 243, 250)
     TABLE_STRIPE = (245, 248, 252)
 
-    # Locate header logo — prefer quotation_logo.jpg as shown in the reference format
-    import sys as _sys
-    from backend.app.utils.paths import DATA_DIR
-    _logo_render_path: Path | None = None
-    _logo_temp_path: Path | None = None
-    _logo_search_dirs: list[Path] = []
-    if getattr(_sys, "frozen", False):
-        _logo_search_dirs.append(Path(_sys._MEIPASS) / "data" / "assets")
-    _logo_search_dirs.append(DATA_DIR / "assets")
-    for _logo_dir in _logo_search_dirs:
-        for _logo_name in ("quotation_logo.jpg", "quotation_logo.png", "tuv_logo.jpg", "tuv_logo.png"):
-            _candidate = _logo_dir / _logo_name
-            if _candidate.exists():
-                _logo_render_path = _candidate
-                break
-        if _logo_render_path is not None:
-            break
-
-    if _logo_render_path is None:
-        logger.warning("Header logo not found in data/assets/")
-    else:
-        logger.info("Header logo selected: %s", _logo_render_path)
-
-    # fpdf validates PNG headers strictly; re-save any image as a valid PNG via Pillow.
-    if _logo_render_path is not None:
-        try:
-            import tempfile as _tempfile
-            from PIL import Image as _PilImage
-            _im = _PilImage.open(_logo_render_path).convert("RGB")
-            with _tempfile.NamedTemporaryFile(suffix=".png", delete=False) as _tmp:
-                _tmp_name = _tmp.name
-            _im.save(_tmp_name, format="PNG")
-            _im.close()
-            _logo_temp_path = Path(_tmp_name)
-            _logo_render_path = _logo_temp_path
-            logger.info("Logo converted to valid PNG -> %s", _tmp_name)
-        except Exception:
-            logger.exception("Logo PNG conversion failed; logo will be skipped")
-            _logo_render_path = None
+    # Use the module-level pre-converted logo (built once at import time)
+    _logo_render_path: Path | None = _CACHED_LOGO_PATH
 
     class TuvPDF(FPDF):
         def header(self):
@@ -269,6 +304,9 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
                 caption = ""
                 width_mm = 120
 
+            # Strip surrounding quotes that users sometimes accidentally type
+            image_path_raw = image_path_raw.strip('"').strip("'").strip()
+
             if not image_path_raw:
                 continue
 
@@ -276,15 +314,28 @@ def generate_quote_pdf(quote_data: Dict[str, Any], output_path: Path, *, include
             if not image_path.is_absolute():
                 image_path = DATA_DIR / image_path_raw
             if not image_path.exists():
+                logger.warning("Section image not found: %s", image_path)
                 continue
 
             width_mm = max(40.0, min(170.0, width_mm))
             x = (210 - width_mm) / 2.0
             try:
-                pdf.image(str(image_path), x=x, y=pdf.get_y(), w=width_mm)
-                # move cursor below image with a safe estimate for common image ratios
-                estimated_h = width_mm * 0.65
-                pdf.set_y(pdf.get_y() + estimated_h + 2)
+                # Use cached PNG (convert only once per source file per process)
+                png_path = _get_image_png(image_path)
+                if png_path is None:
+                    continue
+                from PIL import Image as _PilImg2
+                with _PilImg2.open(png_path) as _im2:
+                    img_w_px, img_h_px = _im2.size
+                # Compute exact height in mm from the actual aspect ratio
+                actual_h = width_mm * (img_h_px / img_w_px) if img_w_px else width_mm
+                # If the image won't fit on the remaining page, start a new page first
+                page_h = pdf.h - pdf.b_margin
+                if pdf.get_y() + actual_h > page_h:
+                    pdf.add_page()
+                pdf.image(png_path, x=x, y=pdf.get_y(), w=width_mm, h=round(actual_h, 2))
+                # Advance cursor by the exact rendered height
+                pdf.set_y(pdf.get_y() + actual_h + 2)
                 if caption:
                     pdf.set_font("Helvetica", "I", 8)
                     pdf.cell(0, 4, _pdf_safe(caption), ln=True, align="C")
